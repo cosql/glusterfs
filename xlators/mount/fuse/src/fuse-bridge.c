@@ -16,6 +16,7 @@
 #include "mount-gluster-compat.h"
 #include "glusterfs.h"
 #include "byte-order.h"
+#include "compat-errno.h"
 
 #ifdef __NetBSD__
 #undef open /* in perfuse.h, pulled from mount-gluster-compat.h */

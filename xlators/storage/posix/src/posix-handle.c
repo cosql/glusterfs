@@ -25,7 +25,7 @@
 #include "posix.h"
 #include "xlator.h"
 #include "syscall.h"
-
+#include "compat-errno.h"
 
 #define HANDLE_PFX ".glusterfs"
 #define TRASH_DIR "landfill"

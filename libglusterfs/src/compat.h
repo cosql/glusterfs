@@ -112,6 +112,8 @@ enum {
 #define F_GETLK64       F_GETLK
 #define F_SETLK64       F_SETLK
 #define F_SETLKW64      F_SETLKW
+#define FALLOC_FL_KEEP_SIZE     0x01 /* default is extend size */
+#define FALLOC_FL_PUNCH_HOLE    0x02 /* de-allocates range */
 
 #endif /* GF_BSD_HOST_OS */
 

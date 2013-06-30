@@ -23,7 +23,7 @@
  * see the commit log and per-function comments.
  */
 
-#ifndef __NetBSD__
+#ifdef GF_LINUX_HOST_OS
 /* FUSE: cherry-picked bd99f9cf */
 static int
 mtab_needs_update (const char *mnt)
@@ -69,9 +69,9 @@ mtab_needs_update (const char *mnt)
 
         return 1;
 }
-#else /* __NetBSD__ */
+#else /* GF_LINUX_HOST_OS */
 #define mtab_needs_update(x) 1
-#endif /* __NetBSD__ */
+#endif /* GF_LINUX_HOST_OS */
 
 /* FUSE: called add_mount_legacy(); R.I.P. as of cbd3a2a8 */
 int
