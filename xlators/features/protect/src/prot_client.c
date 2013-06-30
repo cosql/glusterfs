@@ -15,7 +15,9 @@
 #include "xlator.h"
 #include "defaults.h"
 
+#ifdef HAVE_BACKTRACE
 #include <execinfo.h>
+#endif /* HAVE_BACKTRACE */
 
 #define NUM_FRAMES 20
 

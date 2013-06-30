@@ -331,15 +331,17 @@ AC_SUBST(FUSE_CLIENT_SUBDIR)
 AC_ARG_ENABLE([fusermount],
               AC_HELP_STRING([--disable-fusermount],
                              [Use system's fusermount]))
-
-BUILD_FUSERMOUNT="yes"
-if test "x$enable_fusermount" = "xno"; then
-  BUILD_FUSERMOUNT="no"
+if test $host_os != "freebsd"; then
+   	BUILD_FUSERMOUNT="yes"
+	if test "x$enable_fusermount" = "xno"; then
+       	BUILD_FUSERMOUNT="no"
+	else
+		AC_DEFINE(GF_FUSERMOUNT, 1, [Use our own fusermount])
+		FUSERMOUNT_SUBDIR="contrib/fuse-util"
+	fi
 else
-  AC_DEFINE(GF_FUSERMOUNT, 1, [Use our own fusermount])
-  FUSERMOUNT_SUBDIR="contrib/fuse-util"
+	BUILD_FUSERMOUNT="no"
 fi
-
 AC_SUBST(FUSERMOUNT_SUBDIR)
 #end FUSERMOUNT section
 
@@ -619,12 +621,32 @@ case $host_os in
         BUILD_FUSE_CLIENT=yes
         LEXLIB=""
         ;;
+     *freebsd*)
+		GF_HOST_OS="GF_BSD_HOST_OS"
+        GF_CFLAGS="${ARGP_STANDALONE_CPPFLAGS} -O0"
+        GF_CFLAGS="${GF_CFLAGS} -DTHREAD_UNSAFE_BASENAME"
+        GF_CFLAGS="${GF_CFLAGS} -DTHREAD_UNSAFE_DIRNAME"
+		GF_CFLAGS="${GF_CFLAGS} -D_LIBGEN_H_"
+		GF_CFLAGS="${GF_CFLAGS} -DO_DSYNC=0"
+		GF_CFLAGS="${GF_CFLAGS} -Dxdr_quad_t=xdr_longlong_t"
+		GF_CFLAGS="${GF_CFLAGS} -Dxdr_u_quad_t=xdr_u_longlong_t"
+        GF_GLUSTERFS_CFLAGS="${GF_CFLAGS}"
+		GF_FUSE_CFLAGS="-DFUSERMOUNT_DIR=\\\"\$(sbindir)\\\""
+        GF_LDADD="${ARGP_STANDALONE_LDADD}"
+		BUILD_FUSE_CLIENT=no
+		#BUILD_FUSERMOUNT=no
+		;;
      *bsd*)
         GF_HOST_OS="GF_BSD_HOST_OS"
         GF_CFLAGS="${ARGP_STANDALONE_CPPFLAGS} -O0"
         GF_CFLAGS="${GF_CFLAGS} -DTHREAD_UNSAFE_BASENAME"
         GF_CFLAGS="${GF_CFLAGS} -DTHREAD_UNSAFE_DIRNAME"
+		GF_CFLAGS="${GF_CFLAGS} -D_LIBGEN_H_"
+		GF_CFLAGS="${GF_CFLAGS} -DO_DSYNC=0"
+		GF_CFLAGS="${GF_CFLAGS} -Dxdr_quad_t=xdr_longlong_t"
+		GF_CFLAGS="${GF_CFLAGS} -Dxdr_u_quad_t=xdr_u_longlong_t"
         GF_GLUSTERFS_CFLAGS="${GF_CFLAGS}"
+		GF_FUSE_CFLAGS="-DFUSERMOUNT_DIR=\\\"\$(sbindir)\\\""
         GF_LDADD="${ARGP_STANDALONE_LDADD}"
         if test "x$ac_cv_header_execinfo_h" = "xyes"; then
            GF_GLUSTERFS_LIBS="-lexecinfo"

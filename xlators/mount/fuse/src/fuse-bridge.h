@@ -47,7 +47,7 @@
 #include "syncop.h"
 #include "gidcache.h"
 
-#if defined(GF_LINUX_HOST_OS) || defined(__NetBSD__)
+#if defined(GF_LINUX_HOST_OS) || defined(GF_BSD_HOST_OS)
 #define FUSE_OP_HIGH (FUSE_READDIRPLUS + 1)
 #endif
 #ifdef GF_DARWIN_HOST_OS
