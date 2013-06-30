@@ -331,7 +331,7 @@ AC_SUBST(FUSE_CLIENT_SUBDIR)
 AC_ARG_ENABLE([fusermount],
               AC_HELP_STRING([--disable-fusermount],
                              [Use system's fusermount]))
-if test $host_os != "freebsd"; then
+if test $host_os = "linux"; then
    	BUILD_FUSERMOUNT="yes"
 	if test "x$enable_fusermount" = "xno"; then
        	BUILD_FUSERMOUNT="no"
@@ -634,7 +634,7 @@ case $host_os in
 		GF_FUSE_CFLAGS="-DFUSERMOUNT_DIR=\\\"\$(sbindir)\\\""
         GF_LDADD="${ARGP_STANDALONE_LDADD}"
 		BUILD_FUSE_CLIENT=no
-		#BUILD_FUSERMOUNT=no
+		BUILD_FUSERMOUNT=no
 		;;
      *bsd*)
         GF_HOST_OS="GF_BSD_HOST_OS"
