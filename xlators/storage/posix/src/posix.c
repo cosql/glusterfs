@@ -4405,7 +4405,11 @@ init (xlator_t *this)
         /* Check for Extended attribute support, if not present, log it */
         op_ret = sys_lsetxattr (dir_data->data,
                                 "trusted.glusterfs.test", "working", 8, 0);
+#ifdef __FreeBSD__
+		if (op_ret != -1) {
+#else
         if (op_ret == 0) {
+#endif
                 sys_lremovexattr (dir_data->data, "trusted.glusterfs.test");
         } else {
                 tmp_data = dict_get (this->options,
@@ -4511,7 +4515,11 @@ init (xlator_t *this)
                 /* First time volume, set the GFID */
                 size = sys_lsetxattr (dir_data->data, "trusted.gfid", rootgfid,
                                      16, XATTR_CREATE);
+#ifdef __FreeBSD__
+				if (size == -1) { /* check if size is -1 on FreeBSD */
+#else
                 if (size) {
+#endif /* __FreeBSD */
                         gf_log (this->name, GF_LOG_ERROR,
                                 "%s: failed to set gfid (%s)",
                                 dir_data->data, strerror (errno));

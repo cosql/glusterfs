@@ -5060,7 +5060,11 @@ glusterd_check_and_set_brick_xattr (char *host, char *path, uuid_t uuid,
         /* Check for xattr support in backend fs */
         ret = sys_lsetxattr (path, "trusted.glusterfs.test",
                              "working", 8, 0);
+#ifdef __FreeBSD__
+		if (ret == -1) { /* check if ret is -1 on FreeBSD */
+#else
         if (ret) {
+#endif /* __FreeBSD__ */
                 snprintf (msg, sizeof (msg), "Glusterfs is not"
                           " supported on brick: %s:%s.\nSetting"
                           " extended attributes failed, reason:"
@@ -5082,6 +5086,11 @@ glusterd_check_and_set_brick_xattr (char *host, char *path, uuid_t uuid,
 
         ret = sys_lsetxattr (path, GF_XATTR_VOL_ID_KEY, uuid, 16,
                              XATTR_CREATE);
+#ifdef __FreeBSD__
+		if (ret != -1) { /* check if ret is -1 on FreeBSD */
+			ret = 0;
+		}
+#endif /* __FreeBSD__ */
         if (ret) {
                 snprintf (msg, sizeof (msg), "Failed to set extended "
                           "attributes %s, reason: %s",
