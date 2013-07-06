@@ -635,7 +635,7 @@ case $host_os in
 		GF_FUSE_LIBS="${GF_FUSE_LIBS} /usr/lib/libutil.so"
 		GF_FUSE_LDADD="-lutil"
         GF_LDADD="${ARGP_STANDALONE_LDADD}"
-		BUILD_FUSE_CLIENT=yes
+		BUILD_FUSE_CLIENT=no
 		BUILD_FUSERMOUNT=no
 		;;
      *bsd*)
