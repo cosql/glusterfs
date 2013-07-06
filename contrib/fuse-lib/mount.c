@@ -183,13 +183,14 @@ fuse_mount_sys (const char *mountpoint, char *fsname,
         ret = asprintf (&mnt_param_mnt,
                         "%s,fd=%i,rootmode=%o,user_id=%i,group_id=%i",
                         mnt_param, fd, S_IFDIR, getuid (), getgid ());
+        gf_log ("glusterfs-fuse DEBUG", GF_LOG_INFO, "source: %s mountpoint:%s mnt_param_mnt:%s\n", source, mountpoint, mnt_param_mnt);
         if (ret == -1) {
                 GFFUSE_LOGERR ("Out of memory");
 
                 goto out;
         }
 #ifdef __FreeBSD__
-		ret = mount (source, mountpoint, mountflags, mnt_param_mnt);
+		ret = mount (source, mountpoint, 0, mnt_param_mnt);
 #else
         ret = mount (source, mountpoint, fstype, mountflags,
                      mnt_param_mnt);

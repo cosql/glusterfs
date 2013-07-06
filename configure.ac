@@ -529,7 +529,7 @@ if test "x${ac_cv_header_argp_h}" = "xno"; then
 fi
 
 AC_SUBST(ARGP_STANDALONE_CPPFLAGS)
-AC_SUBST(ARGP_STANDALONE_LDADD)
+AC_SUBST(RGP_STANDALONE_LDADD)
 
 AC_CHECK_HEADER([malloc.h], AC_DEFINE(HAVE_MALLOC_H, 1, [have malloc.h]))
 
@@ -632,8 +632,10 @@ case $host_os in
 		GF_CFLAGS="${GF_CFLAGS} -Dxdr_u_quad_t=xdr_u_longlong_t"
         GF_GLUSTERFS_CFLAGS="${GF_CFLAGS}"
 		GF_FUSE_CFLAGS="-DFUSERMOUNT_DIR=\\\"\$(sbindir)\\\""
+		GF_FUSE_LIBS="${GF_FUSE_LIBS} /usr/lib/libutil.so"
+		GF_FUSE_LDADD="-lutil"
         GF_LDADD="${ARGP_STANDALONE_LDADD}"
-		BUILD_FUSE_CLIENT=no
+		BUILD_FUSE_CLIENT=yes
 		BUILD_FUSERMOUNT=no
 		;;
      *bsd*)
