@@ -529,7 +529,7 @@ if test "x${ac_cv_header_argp_h}" = "xno"; then
 fi
 
 AC_SUBST(ARGP_STANDALONE_CPPFLAGS)
-AC_SUBST(RGP_STANDALONE_LDADD)
+AC_SUBST(ARGP_STANDALONE_LDADD)
 
 AC_CHECK_HEADER([malloc.h], AC_DEFINE(HAVE_MALLOC_H, 1, [have malloc.h]))
 
