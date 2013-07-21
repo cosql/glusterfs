@@ -17,6 +17,11 @@
 #endif
 #define FUSE_DEVFD_ENV "_FUSE_DEVFD"
 
+#ifdef __FreeBSD__
+#include <sys/types.h>
+#include <sys/uio.h>
+#include <unistd.h>
+#endif /* __FreeBSD__ */
 
 /* FUSE: function is called fuse_kern_unmount() */
 void
@@ -170,6 +175,53 @@ fuse_mount_fusermount (const char *mountpoint, char *fsname,
         return ret;
 }
 
+#ifdef __FreeBSD__
+void
+build_iovec(struct iovec **iov, int *iovlen, const char *name, void *val,
+			size_t len)
+{
+	int i;
+
+	if (*iovlen < 0)
+		return;
+	i = *iovlen;
+	*iov = realloc(*iov, sizeof **iov * (i + 2));
+	if (*iov == NULL) {
+		*iovlen = -1;
+		return;
+	}
+	(*iov)[i].iov_base = strdup(name);
+	(*iov)[i].iov_len = strlen(name) + 1;
+	i++;
+	(*iov)[i].iov_base = val;
+	if (len == (size_t)-1) {
+		if (val != NULL)
+			len = strlen(val) + 1;
+		else
+			len = 0;
+	}
+	(*iov)[i].iov_len = (int)len;
+	*iovlen = ++i;
+}
+
+/*
+ * This function is needed for compatibility with parameters
+ * which used to use the mount_argf() command for the old mount() syscall.
+ */
+void
+build_iovec_argf(struct iovec **iov, int *iovlen, const char *name,
+				 const char *fmt, ...)
+{
+	va_list ap;
+	char val[255] = { 0 };
+
+	va_start(ap, fmt);
+	vsnprintf(val, sizeof(val), fmt, ap);
+	va_end(ap);
+	build_iovec(iov, iovlen, name, strdup(val), (size_t)-1);
+}
+#endif /* __FreeBSD__ */
+
 static int
 fuse_mount_sys (const char *mountpoint, char *fsname,
                 unsigned long mountflags, char *mnt_param, int fd)
@@ -190,7 +242,17 @@ fuse_mount_sys (const char *mountpoint, char *fsname,
                 goto out;
         }
 #ifdef __FreeBSD__
-		ret = mount (source, mountpoint, 0, mnt_param_mnt);
+		struct iovec *iov;
+        int iovlen;
+        char errmsg[25500];
+        errmsg[0] = '\0';
+        build_iovec(&iov, &iovlen, "fstype", fstype, -1);
+        build_iovec(&iov, &iovlen, "fspath", mountpoint, -1);
+        build_iovec(&iov, &iovlen, "from", source, -1);
+        build_iovec_argf(&iov, &iovlen, "fd", "%d", fd);
+        build_iovec_argf(&iov, &iovlen, "user_id", "%d", getuid());
+        build_iovec_argf(&iov, &iovlen, "group_id", "%d", getgid());
+		ret = nmount(iov, iovlen, mountflags);
 #else
         ret = mount (source, mountpoint, fstype, mountflags,
                      mnt_param_mnt);

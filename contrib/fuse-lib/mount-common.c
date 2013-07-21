@@ -246,9 +246,9 @@ fuse_mnt_umount (const char *progname, const char *abs_mnt,
         if (res == 0) {
                 sigprocmask (SIG_SETMASK, &oldmask, NULL);
                 setuid (geteuid ());
-                execl ("/bin/umount", "/bin/umount", "-i", rel_mnt,
+                execl ("/sbin/umount", "/sbin/umount", "-i", rel_mnt,
                       lazy ? "-l" : NULL, NULL);
-                GFFUSE_LOGERR ("%s: failed to execute /bin/umount: %s",
+                GFFUSE_LOGERR ("%s: failed to execute /sbin/umount: %s",
                                progname, strerror (errno));
                 exit (1);
         }

@@ -630,11 +630,12 @@ case $host_os in
 		GF_CFLAGS="${GF_CFLAGS} -DO_DSYNC=0"
 		GF_CFLAGS="${GF_CFLAGS} -Dxdr_quad_t=xdr_longlong_t"
 		GF_CFLAGS="${GF_CFLAGS} -Dxdr_u_quad_t=xdr_u_longlong_t"
-        GF_GLUSTERFS_CFLAGS="${GF_CFLAGS}"
+		GF_CFLAGS="${GF_CFLAGS} -I/usr/local/include"
+    GF_GLUSTERFS_CFLAGS="${GF_CFLAGS}"
 		GF_FUSE_CFLAGS="-DFUSERMOUNT_DIR=\\\"\$(sbindir)\\\""
 		GF_FUSE_LIBS="${GF_FUSE_LIBS} /usr/lib/libutil.so"
 		GF_FUSE_LDADD="-lutil"
-        GF_LDADD="${ARGP_STANDALONE_LDADD}"
+    GF_LDADD="${ARGP_STANDALONE_LDADD} /usr/local/lib/libintl.so"
 		BUILD_FUSE_CLIENT=no
 		BUILD_FUSERMOUNT=no
 		;;
@@ -647,6 +648,7 @@ case $host_os in
 		GF_CFLAGS="${GF_CFLAGS} -DO_DSYNC=0"
 		GF_CFLAGS="${GF_CFLAGS} -Dxdr_quad_t=xdr_longlong_t"
 		GF_CFLAGS="${GF_CFLAGS} -Dxdr_u_quad_t=xdr_u_longlong_t"
+		GF_CFLAGS="${GF_CFLAGS} -I/usr/local/include"
         GF_GLUSTERFS_CFLAGS="${GF_CFLAGS}"
 		GF_FUSE_CFLAGS="-DFUSERMOUNT_DIR=\\\"\$(sbindir)\\\""
         GF_LDADD="${ARGP_STANDALONE_LDADD}"
