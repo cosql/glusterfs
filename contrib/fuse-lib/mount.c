@@ -243,12 +243,14 @@ fuse_mount_sys (const char *mountpoint, char *fsname,
         }
 #ifdef __FreeBSD__
 		struct iovec *iov;
-        int iovlen;
+        int iovlen = 0;
         char errmsg[25500];
         errmsg[0] = '\0';
         build_iovec(&iov, &iovlen, "fstype", fstype, -1);
+		build_iovec(&iov, &iovlen, "subtype", "glusterfs", -1);
         build_iovec(&iov, &iovlen, "fspath", mountpoint, -1);
-        build_iovec(&iov, &iovlen, "from", source, -1);
+        build_iovec(&iov, &iovlen, "from", "/dev/fuse", -1);
+		build_iovec(&iov, &iovlen, "volname", source, -1);
         build_iovec_argf(&iov, &iovlen, "fd", "%d", fd);
         build_iovec_argf(&iov, &iovlen, "user_id", "%d", getuid());
         build_iovec_argf(&iov, &iovlen, "group_id", "%d", getgid());
