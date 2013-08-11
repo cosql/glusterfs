@@ -17,6 +17,11 @@
 #endif
 #define FUSE_DEVFD_ENV "_FUSE_DEVFD"
 
+#ifdef __FreeBSD__
+#include <sys/types.h>
+#include <sys/uio.h>
+#include <unistd.h>
+#endif /* __FreeBSD__ */
 
 /* FUSE: function is called fuse_kern_unmount() */
 void
@@ -170,6 +175,53 @@ fuse_mount_fusermount (const char *mountpoint, char *fsname,
         return ret;
 }
 
+#ifdef __FreeBSD__
+void
+build_iovec(struct iovec **iov, int *iovlen, const char *name, void *val,
+			size_t len)
+{
+	int i;
+	if (*iovlen < 0)
+		return;
+	i = *iovlen;
+	printf("name %s\n", name);
+	*iov = realloc(*iov, sizeof **iov * (i + 2));
+	if (*iov == NULL) {
+		*iovlen = -1;
+		return;
+	}
+	(*iov)[i].iov_base = strdup(name);
+	(*iov)[i].iov_len = strlen(name) + 1;
+	i++;
+	(*iov)[i].iov_base = val;
+	if (len == (size_t)-1) {
+		if (val != NULL)
+			len = strlen(val) + 1;
+		else
+			len = 0;
+	}
+	(*iov)[i].iov_len = (int)len;
+	*iovlen = ++i;
+}
+
+/*
+ * This function is needed for compatibility with parameters
+ * which used to use the mount_argf() command for the old mount() syscall.
+ */
+void
+build_iovec_argf(struct iovec **iov, int *iovlen, const char *name,
+				 const char *fmt, ...)
+{
+	va_list ap;
+	char val[255] = { 0 };
+
+	va_start(ap, fmt);
+	vsnprintf(val, sizeof(val), fmt, ap);
+	va_end(ap);
+	build_iovec(iov, iovlen, name, strdup(val), (size_t)-1);
+}
+#endif /* __FreeBSD__ */
+
 static int
 fuse_mount_sys (const char *mountpoint, char *fsname,
                 unsigned long mountflags, char *mnt_param, int fd)
@@ -189,8 +241,21 @@ fuse_mount_sys (const char *mountpoint, char *fsname,
 
                 goto out;
         }
+char errmsg[255];
 #ifdef __FreeBSD__
-		ret = mount (source, mountpoint, 0, mnt_param_mnt);
+		struct iovec *iov;
+        int iovlen = 0;
+        errmsg[0] = '\0';
+        build_iovec(&iov, &iovlen, "fstype", "fusefs", -1);
+		build_iovec(&iov, &iovlen, "subtype", "glusterfs", -1);
+        build_iovec(&iov, &iovlen, "fspath", mountpoint, -1);
+        build_iovec(&iov, &iovlen, "from", "/dev/fuse", -1);
+		build_iovec(&iov, &iovlen, "volname", source, -1);
+        build_iovec_argf(&iov, &iovlen, "fd", "%d", fd);
+        build_iovec_argf(&iov, &iovlen, "user_id", "%d", getuid());
+        build_iovec_argf(&iov, &iovlen, "group_id", "%d", getgid());
+		// build_iovec(&iov, &iovlen, "errmsg", errmsg, sizeof(errmsg));
+		ret = nmount(iov, iovlen, mountflags);
 #else
         ret = mount (source, mountpoint, fstype, mountflags,
                      mnt_param_mnt);
@@ -207,7 +272,7 @@ fuse_mount_sys (const char *mountpoint, char *fsname,
 
                         goto out;
                 }
-                ret = mount (source, mountpoint, fstype, 0,
+                ret = mount (source, mountpoint, fstype, mountflags,
                              mnt_param_mnt);
         }
 #endif /* GF_LINUX_HOST_OS */
@@ -249,6 +314,7 @@ fuse_mount_sys (const char *mountpoint, char *fsname,
 
 out:
         if (ret == -1) {
+			GFFUSE_LOGERR("ret = -1\n");
                 if (mounted)
                         umount2 (mountpoint, 2); /* lazy umount */
         }
@@ -292,9 +358,9 @@ gf_fuse_mount (const char *mountpoint, char *fsname,
                 ret = fuse_mount_sys (mountpoint, fsname, mountflags, mnt_param, fd);
                 if (ret == -1) {
                         gf_log ("glusterfs-fuse", GF_LOG_INFO,
-                                "direct mount failed (%s), "
+                                "direct mount failed (%s) errno %d, "
                                 "retry to mount via fusermount",
-                                strerror (errno));
+                                strerror (errno), errno);
 
                         ret = fuse_mount_fusermount (mountpoint, fsname, mountflags,
                                                      mnt_param, fd);
