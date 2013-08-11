@@ -509,7 +509,7 @@ dnl FreeBSD, NetBSD
 AC_CHECK_MEMBERS([struct stat.st_atimespec.tv_nsec])
 case $host_os in
         *netbsd*)
-        CFLAGS=-D_INCOMPLETE_XOPEN_C063
+        CFLAGS+=" -D_INCOMPLETE_XOPEN_C063"
         ;;
 esac
 AC_CHECK_FUNC([linkat], [have_linkat=yes])
@@ -634,8 +634,10 @@ case $host_os in
 		GF_FUSE_CFLAGS="-DFUSERMOUNT_DIR=\\\"\$(sbindir)\\\""
 		GF_FUSE_LIBS="${GF_FUSE_LIBS} /usr/lib/libutil.so"
 		GF_FUSE_LDADD="-lutil"
-        GF_LDADD="${ARGP_STANDALONE_LDADD}"
-		BUILD_FUSE_CLIENT=yes
+		GF_CFLAGS="${GF_CFLAGS} -I/usr/local/include"
+    GF_GLUSTERFS_CFLAGS="${GF_CFLAGS}"
+    GF_LDADD="${ARGP_STANDALONE_LDADD} /usr/local/lib/libintl.so"
+		BUILD_FUSE_CLIENT=no
 		BUILD_FUSERMOUNT=no
 		;;
      *bsd*)
@@ -647,6 +649,7 @@ case $host_os in
 		GF_CFLAGS="${GF_CFLAGS} -DO_DSYNC=0"
 		GF_CFLAGS="${GF_CFLAGS} -Dxdr_quad_t=xdr_longlong_t"
 		GF_CFLAGS="${GF_CFLAGS} -Dxdr_u_quad_t=xdr_u_longlong_t"
+		GF_CFLAGS="${GF_CFLAGS} -I/usr/local/include"
         GF_GLUSTERFS_CFLAGS="${GF_CFLAGS}"
 		GF_FUSE_CFLAGS="-DFUSERMOUNT_DIR=\\\"\$(sbindir)\\\""
         GF_LDADD="${ARGP_STANDALONE_LDADD}"
@@ -681,6 +684,20 @@ else
 fi
 AC_SUBST(CFLAGS)
 # end enable debug section
+
+# syslog section
+AC_ARG_ENABLE([syslog],
+	      AC_HELP_STRING([--disable-syslog],
+			     [Disable syslog for logging]))
+
+USE_SYSLOG="yes"
+if test "x$enable_syslog" != "xno"; then
+  AC_DEFINE(GF_USE_SYSLOG, 1, [Use syslog for logging])
+else
+  USE_SYSLOG="no"
+fi
+AM_CONDITIONAL([ENABLE_SYSLOG], [test x$USE_SYSLOG = xyes])
+#end syslog section
 
 BUILD_READLINE=no
 AC_CHECK_LIB([readline -lcurses],[readline],[RLLIBS="-lreadline -lcurses"])
@@ -792,4 +809,5 @@ echo "Enable Debug         : $BUILD_DEBUG"
 echo "systemtap            : $BUILD_SYSTEMTAP"
 echo "Block Device backend : $BUILD_BD_XLATOR"
 echo "glupy                : $BUILD_GLUPY"
+echo "Use syslog           : $USE_SYSLOG"
 echo
