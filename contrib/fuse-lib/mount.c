@@ -184,7 +184,6 @@ build_iovec(struct iovec **iov, int *iovlen, const char *name, void *val,
 	if (*iovlen < 0)
 		return;
 	i = *iovlen;
-	printf("%s %s %d\n", name, (char *)val, i);
 
 	*iov = realloc(*iov, sizeof **iov * (i + 2));
 	if (*iov == NULL) {
