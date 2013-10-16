@@ -635,9 +635,12 @@ case $host_os in
         GF_FUSE_LIBS="${GF_FUSE_LIBS} /usr/lib/libutil.so"
         GF_FUSE_LDADD="-lutil"
         GF_CFLAGS="${GF_CFLAGS} -I/usr/local/include"
-        GF_CFLAGS="-fgnu89-inline ${GF_CFLAGS}"
+        CFLAGS="-std=gnu89 ${CFLAGS}"
         GF_GLUSTERFS_CFLAGS="${GF_CFLAGS}"
         GF_LDADD="${ARGP_STANDALONE_LDADD} /usr/local/lib/libintl.so"
+        if test "x$ac_cv_header_execinfo_h" = "xyes"; then
+           GF_GLUSTERFS_LIBS="-lexecinfo"
+        fi
         BUILD_FUSE_CLIENT=yes
         BUILD_FUSERMOUNT=no
         ;;
