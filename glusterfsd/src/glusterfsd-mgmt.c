@@ -37,7 +37,7 @@
 #include "syncop.h"
 #include "xlator.h"
 
-static char is_mgmt_rpc_reconnect;
+static gf_boolean_t is_mgmt_rpc_reconnect = _gf_false;
 
 int glusterfs_mgmt_pmap_signin (glusterfs_ctx_t *ctx);
 int glusterfs_volfile_fetch (glusterfs_ctx_t *ctx);
@@ -1200,7 +1200,7 @@ glusterfs_handle_rpc_msg (rpcsvc_request_t *req)
         return ret;
 }
 
-rpcclnt_cb_actor_t gluster_cbk_actors[] = {
+rpcclnt_cb_actor_t mgmt_cbk_actors[] = {
         [GF_CBK_FETCHSPEC] = {"FETCHSPEC", GF_CBK_FETCHSPEC, mgmt_cbk_spec },
         [GF_CBK_EVENT_NOTIFY] = {"EVENTNOTIFY", GF_CBK_EVENT_NOTIFY,
                                  mgmt_cbk_event},
@@ -1211,7 +1211,7 @@ struct rpcclnt_cb_program mgmt_cbk_prog = {
         .progname  = "GlusterFS Callback",
         .prognum   = GLUSTER_CBK_PROGRAM,
         .progver   = GLUSTER_CBK_VERSION,
-        .actors    = gluster_cbk_actors,
+        .actors    = mgmt_cbk_actors,
         .numactors = GF_CBK_MAXVALUE,
 };
 
@@ -1327,190 +1327,10 @@ out:
 
 
 /* XXX: move these into @ctx */
-static char oldvolfile[131072];
+static char *oldvolfile = NULL;
 static int oldvollen = 0;
 
-static int
-xlator_equal_rec (xlator_t *xl1, xlator_t *xl2)
-{
-        xlator_list_t *trav1 = NULL;
-        xlator_list_t *trav2 = NULL;
-        int            ret   = 0;
 
-        if (xl1 == NULL || xl2 == NULL) {
-                gf_log ("xlator", GF_LOG_DEBUG, "invalid argument");
-                return -1;
-        }
-
-        trav1 = xl1->children;
-        trav2 = xl2->children;
-
-        while (trav1 && trav2) {
-                ret = xlator_equal_rec (trav1->xlator, trav2->xlator);
-                if (ret) {
-                        gf_log ("glusterfsd-mgmt", GF_LOG_DEBUG,
-                                "xlators children not equal");
-                        goto out;
-                }
-
-                trav1 = trav1->next;
-                trav2 = trav2->next;
-        }
-
-        if (trav1 || trav2) {
-                ret = -1;
-                goto out;
-        }
-
-        if (strcmp (xl1->name, xl2->name)) {
-                ret = -1;
-                goto out;
-        }
-
-	/* type could have changed even if xlator names match,
-	   e.g cluster/distrubte and cluster/nufa share the same
-	   xlator name
-	*/
-        if (strcmp (xl1->type, xl2->type)) {
-                ret = -1;
-                goto out;
-        }
-out :
-        return ret;
-}
-
-static gf_boolean_t
-is_graph_topology_equal (glusterfs_graph_t *graph1,
-                                glusterfs_graph_t *graph2)
-{
-        xlator_t    *trav1    = NULL;
-        xlator_t    *trav2    = NULL;
-        gf_boolean_t ret      = _gf_true;
-
-        trav1 = graph1->first;
-        trav2 = graph2->first;
-
-        ret = xlator_equal_rec (trav1, trav2);
-
-        if (ret) {
-                gf_log ("glusterfsd-mgmt", GF_LOG_DEBUG,
-                        "graphs are not equal");
-                ret = _gf_false;
-                goto out;
-        }
-
-        ret = _gf_true;
-        gf_log ("glusterfsd-mgmt", GF_LOG_DEBUG,
-                "graphs are equal");
-
-out:
-        return ret;
-}
-
-/* Function has 3types of return value 0, -ve , 1
- *   return 0          =======> reconfiguration of options has succeeded
- *   return 1          =======> the graph has to be reconstructed and all the xlators should be inited
- *   return -1(or -ve) =======> Some Internal Error occurred during the operation
- */
-static int
-glusterfs_volfile_reconfigure (FILE *newvolfile_fp)
-{
-        glusterfs_graph_t *oldvolfile_graph = NULL;
-        glusterfs_graph_t *newvolfile_graph = NULL;
-        int                oldvolfile_fd    = -1;
-        FILE              *oldvolfile_fp    = NULL;
-        glusterfs_ctx_t   *ctx              = NULL;
-        char               template[PATH_MAX] = {0};
-
-        int ret = -1;
-
-        strcpy (template, "/tmp/tmp.XXXXXX");
-        oldvolfile_fd = mkstemp (template);
-        if (oldvolfile_fd == -1) {
-                gf_log ("glusterfsd-mgmt", GF_LOG_ERROR, "Unable to create "
-                        "temporary file: %s (%s)", template,
-                        strerror (errno));
-                goto out;
-        }
-
-        ret = unlink (template);
-        if (ret < 0) {
-                gf_log ("glusterfsd-mgmt", GF_LOG_WARNING, "Unable to delete "
-                        "file: %s", template);
-        }
-
-        oldvolfile_fp = fdopen (oldvolfile_fd, "w+b");
-        if (!oldvolfile_fp) {
-                gf_log ("glusterfsd-mgmt", GF_LOG_CRITICAL, "Failed to create "
-                        "temporary volfile");
-                goto out;
-        }
-
-        if (!oldvollen) {
-                ret = 1; // Has to call INIT for the whole graph
-                goto out;
-        }
-        fwrite (oldvolfile, oldvollen, 1, oldvolfile_fp);
-        fflush (oldvolfile_fp);
-        if (ferror (oldvolfile_fp)) {
-                goto out;
-        }
-
-
-        oldvolfile_graph = glusterfs_graph_construct (oldvolfile_fp);
-        if (!oldvolfile_graph) {
-                goto out;
-        }
-
-        newvolfile_graph = glusterfs_graph_construct (newvolfile_fp);
-        if (!newvolfile_graph) {
-                goto out;
-        }
-
-        if (!is_graph_topology_equal (oldvolfile_graph,
-                                      newvolfile_graph)) {
-
-                ret = 1;
-                gf_log ("glusterfsd-mgmt", GF_LOG_DEBUG,
-                        "Graph topology not equal(should call INIT)");
-                goto out;
-        }
-
-        gf_log ("glusterfsd-mgmt", GF_LOG_DEBUG,
-                "Only options have changed in the new "
-                "graph");
-
-        ctx = glusterfsd_ctx;
-
-        oldvolfile_graph = ctx->active;
-
-        if (!oldvolfile_graph) {
-                gf_log ("glusterfsd-mgmt", GF_LOG_ERROR,
-                        "glusterfs_ctx->active is NULL");
-                goto out;
-        }
-
-        /* */
-        ret = glusterfs_graph_reconfigure (oldvolfile_graph,
-                                           newvolfile_graph);
-        if (ret) {
-                gf_log ("glusterfsd-mgmt", GF_LOG_DEBUG,
-                        "Could not reconfigure new options in old graph");
-                goto out;
-        }
-
-        ret = 0;
-out:
-        if (oldvolfile_fp) {
-                fclose (oldvolfile_fp);
-
-        } else if (-1 != oldvolfile_fd) {
-            close (oldvolfile_fd);
-
-        }
-
-        return ret;
-}
 
 int
 mgmt_getspec_cbk (struct rpc_req *req, struct iovec *iov, int count,
@@ -1522,6 +1342,7 @@ mgmt_getspec_cbk (struct rpc_req *req, struct iovec *iov, int count,
         int                      ret   = 0;
         ssize_t                  size = 0;
         FILE                    *tmpfp = NULL;
+        char                    *volfilebuf = NULL;
 
         frame = myframe;
         ctx = frame->this->ctx;
@@ -1575,10 +1396,19 @@ mgmt_getspec_cbk (struct rpc_req *req, struct iovec *iov, int count,
         *  return -1(or -ve) =======> Some Internal Error occurred during the operation
         */
 
-        ret = glusterfs_volfile_reconfigure (tmpfp);
+        ret = glusterfs_volfile_reconfigure (oldvollen, tmpfp, ctx, oldvolfile);
         if (ret == 0) {
                 gf_log ("glusterfsd-mgmt", GF_LOG_DEBUG,
                         "No need to re-load volfile, reconfigure done");
+                if (oldvolfile)
+                        volfilebuf = GF_REALLOC (oldvolfile, size);
+                else
+                        volfilebuf = GF_CALLOC (1, size, gf_common_mt_char);
+                if (!volfilebuf) {
+                        ret = -1;
+                        goto out;
+                }
+                oldvolfile = volfilebuf;
                 oldvollen = size;
                 memcpy (oldvolfile, rsp.spec, size);
                 goto out;
@@ -1595,11 +1425,21 @@ mgmt_getspec_cbk (struct rpc_req *req, struct iovec *iov, int count,
         if (ret)
                 goto out;
 
+        if (oldvolfile)
+                volfilebuf = GF_REALLOC (oldvolfile, size);
+        else
+                volfilebuf = GF_CALLOC (1, size, gf_common_mt_char);
+
+        if (!volfilebuf) {
+                ret = -1;
+                goto out;
+        }
+        oldvolfile = volfilebuf;
         oldvollen = size;
         memcpy (oldvolfile, rsp.spec, size);
         if (!is_mgmt_rpc_reconnect) {
                 glusterfs_mgmt_pmap_signin (ctx);
-                is_mgmt_rpc_reconnect = 1;
+                is_mgmt_rpc_reconnect =  _gf_true;
         }
 
 out:
@@ -1802,30 +1642,52 @@ static int
 mgmt_rpc_notify (struct rpc_clnt *rpc, void *mydata, rpc_clnt_event_t event,
                  void *data)
 {
-        xlator_t        *this = NULL;
-        cmd_args_t      *cmd_args = NULL;
-        glusterfs_ctx_t *ctx = NULL;
+        xlator_t         *this = NULL;
+        glusterfs_ctx_t  *ctx = NULL;
         int              ret = 0;
-        int need_term = 0;
-        int emval = 0;
+        server_cmdline_t *server = NULL;
+        rpc_transport_t  *rpc_trans = NULL;
+        int              need_term = 0;
+        int              emval = 0;
 
         this = mydata;
+        rpc_trans = rpc->conn.trans;
         ctx = this->ctx;
-        cmd_args = &ctx->cmd_args;
+
         switch (event) {
         case RPC_CLNT_DISCONNECT:
                 if (!ctx->active) {
-                        cmd_args->max_connect_attempts--;
                         gf_log ("glusterfsd-mgmt", GF_LOG_ERROR,
-                                "failed to connect with remote-host: %s",
+                                "failed to connect with remote-host: %s (%s)",
+                                ctx->cmd_args.volfile_server,
                                 strerror (errno));
-                        gf_log ("glusterfsd-mgmt", GF_LOG_INFO,
-                                "%d connect attempts left",
-                                cmd_args->max_connect_attempts);
-                        if (0 >= cmd_args->max_connect_attempts) {
+                        server = ctx->cmd_args.curr_server;
+                        if (server->list.next == &ctx->cmd_args.volfile_servers) {
                                 need_term = 1;
                                 emval = ENOTCONN;
+                                gf_log("glusterfsd-mgmt", GF_LOG_INFO,
+                                       "Exhausted all volfile servers");
+                                break;
                         }
+                        server = list_entry (server->list.next, typeof(*server),
+                                             list);
+                        ctx->cmd_args.curr_server = server;
+                        ctx->cmd_args.volfile_server = server->volfile_server;
+
+                        ret = dict_set_str (rpc_trans->options,
+                                            "remote-host",
+                                            server->volfile_server);
+                        if (ret != 0) {
+                                gf_log ("glusterfsd-mgmt", GF_LOG_ERROR,
+                                        "failed to set remote-host: %s",
+                                        server->volfile_server);
+                                need_term = 1;
+                                emval = ENOTCONN;
+                                break;
+                        }
+                        gf_log ("glusterfsd-mgmt", GF_LOG_INFO,
+                                "connecting to next volfile server %s",
+                                server->volfile_server);
                 }
                 break;
         case RPC_CLNT_CONNECT:
@@ -2029,7 +1891,8 @@ glusterfs_mgmt_init (glusterfs_ctx_t *ctx)
 
         ret = rpc_clnt_register_notify (rpc, mgmt_rpc_notify, THIS);
         if (ret) {
-                gf_log (THIS->name, GF_LOG_WARNING, "failed to register notify function");
+                gf_log (THIS->name, GF_LOG_WARNING,
+                        "failed to register notify function");
                 goto out;
         }
 

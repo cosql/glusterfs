@@ -341,6 +341,9 @@ __dht_check_free_space (xlator_t *to, xlator_t *from, loc_t *loc,
         int             ret        = -1;
         xlator_t       *this       = NULL;
 
+        uint64_t        src_statfs_blocks = 1;
+        uint64_t        dst_statfs_blocks = 1;
+
         this = THIS;
 
         ret = syncop_statfs (from, loc, &src_statfs);
@@ -364,22 +367,34 @@ __dht_check_free_space (xlator_t *to, xlator_t *from, loc_t *loc,
         if (flag != GF_DHT_MIGRATE_DATA)
                 goto check_avail_space;
 
-        if (((dst_statfs.f_bavail *
-              dst_statfs.f_bsize) / GF_DISK_SECTOR_SIZE) <
-            (((src_statfs.f_bavail * src_statfs.f_bsize) /
-              GF_DISK_SECTOR_SIZE) - stbuf->ia_blocks)) {
-                gf_log (this->name, GF_LOG_WARNING,
-                        "data movement attempted from node (%s) with"
-                        " higher disk space to a node (%s) with "
-                        "lesser disk space (%s)", from->name,
-                        to->name, loc->path);
+        /* Check:
+           During rebalance `migrate-data` - Destination subvol experiences
+           a `reduction` in 'blocks' of free space, at the same time source
+           subvol gains certain 'blocks' of free space. A valid check is
+           necessary here to avoid errorneous move to destination where
+           the space could be scantily available.
+         */
+        if (stbuf) {
+                dst_statfs_blocks = ((dst_statfs.f_bavail *
+                                      dst_statfs.f_bsize) /
+                                     GF_DISK_SECTOR_SIZE);
+                src_statfs_blocks = ((src_statfs.f_bavail *
+                                      src_statfs.f_bsize) /
+                                     GF_DISK_SECTOR_SIZE);
+                if ((dst_statfs_blocks - stbuf->ia_blocks) <
+                    (src_statfs_blocks + stbuf->ia_blocks)) {
+                        gf_log (this->name, GF_LOG_WARNING,
+                                "data movement attempted from node (%s) with"
+                                " higher disk space to a node (%s) with "
+                                "lesser disk space (%s)", from->name,
+                                to->name, loc->path);
 
-                /* this is not a 'failure', but we don't want to
-                   consider this as 'success' too :-/ */
-                ret = 1;
-                goto out;
+                        /* this is not a 'failure', but we don't want to
+                           consider this as 'success' too :-/ */
+                        ret = 1;
+                        goto out;
+                }
         }
-
 check_avail_space:
         if (((dst_statfs.f_bavail * dst_statfs.f_bsize) /
               GF_DISK_SECTOR_SIZE) < stbuf->ia_blocks) {
@@ -621,6 +636,15 @@ migrate_special_files (xlator_t *this, xlator_t *from, xlator_t *to, loc_t *loc,
         }
 
 done:
+        ret = syncop_setattr (to, loc, buf,
+                              (GF_SET_ATTR_UID | GF_SET_ATTR_GID |
+                               GF_SET_ATTR_MODE), NULL, NULL);
+        if (ret) {
+                gf_log (this->name, GF_LOG_WARNING,
+                        "%s: failed to perform setattr on %s (%s)",
+                        loc->path, to->name, strerror (errno));
+        }
+
         ret = syncop_unlink (from, loc);
         if (ret)
                 gf_log (this->name, GF_LOG_WARNING, "%s: unlink failed (%s)",
@@ -1102,6 +1126,7 @@ gf_defrag_migrate_data (xlator_t *this, gf_defrag_info_t *defrag, loc_t *loc,
         struct timeval           end            = {0,};
         double                   elapsed        = {0,};
         struct timeval           start          = {0,};
+        int32_t                  err            = 0;
 
         gf_log (this->name, GF_LOG_INFO, "migrate data called on %s",
                 loc->path);
@@ -1259,9 +1284,21 @@ gf_defrag_migrate_data (xlator_t *this, gf_defrag_info_t *defrag, loc_t *loc,
                         ret = syncop_setxattr (this, &entry_loc, migrate_data,
                                                0);
                         if (ret) {
-                                gf_log (this->name, GF_LOG_ERROR, "migrate-data"
-                                        " failed for %s", entry_loc.path);
-                                defrag->total_failures +=1;
+                                err = op_errno;
+                                /* errno is overloaded. See
+                                 * rebalance_task_completion () */
+                                if (err != ENOSPC) {
+                                        gf_log (this->name, GF_LOG_DEBUG,
+                                                "migrate-data skipped for %s"
+                                                " due to space constraints",
+                                                entry_loc.path);
+                                        defrag->skipped +=1;
+                                } else{
+                                        gf_log (this->name, GF_LOG_ERROR,
+                                                "migrate-data failed for %s",
+                                                entry_loc.path);
+                                        defrag->total_failures +=1;
+                                }
                         }
 
                         if (ret == -1) {
@@ -1660,6 +1697,7 @@ gf_defrag_status_get (gf_defrag_info_t *defrag, dict_t *dict)
         uint64_t size   = 0;
         uint64_t lookup = 0;
         uint64_t failures = 0;
+        uint64_t skipped = 0;
         char     *status = "";
         double   elapsed = 0;
         struct timeval end = {0,};
@@ -1676,6 +1714,7 @@ gf_defrag_status_get (gf_defrag_info_t *defrag, dict_t *dict)
         size   = defrag->total_data;
         lookup = defrag->num_files_lookedup;
         failures = defrag->total_failures;
+        skipped = defrag->skipped;
 
         gettimeofday (&end, NULL);
 
@@ -1699,6 +1738,7 @@ gf_defrag_status_get (gf_defrag_info_t *defrag, dict_t *dict)
                 gf_log (THIS->name, GF_LOG_WARNING,
                         "failed to set lookedup file count");
 
+
         ret = dict_set_int32 (dict, "status", defrag->defrag_status);
         if (ret)
                 gf_log (THIS->name, GF_LOG_WARNING,
@@ -1711,6 +1751,14 @@ gf_defrag_status_get (gf_defrag_info_t *defrag, dict_t *dict)
         }
 
         ret = dict_set_uint64 (dict, "failures", failures);
+        if (ret)
+                gf_log (THIS->name, GF_LOG_WARNING,
+                        "failed to set failure count");
+
+        ret = dict_set_uint64 (dict, "skipped", skipped);
+        if (ret)
+                gf_log (THIS->name, GF_LOG_WARNING,
+                        "failed to set skipped file count");
 log:
         switch (defrag->defrag_status) {
         case GF_DEFRAG_STATUS_NOT_STARTED:
@@ -1728,13 +1776,15 @@ log:
         case GF_DEFRAG_STATUS_FAILED:
                 status = "failed";
                 break;
+        default:
+                break;
         }
 
         gf_log (THIS->name, GF_LOG_INFO, "Rebalance is %s. Time taken is %.2f "
                 "secs", status, elapsed);
         gf_log (THIS->name, GF_LOG_INFO, "Files migrated: %"PRIu64", size: %"
-                PRIu64", lookups: %"PRIu64", failures: %"PRIu64, files, size,
-                lookup, failures);
+                PRIu64", lookups: %"PRIu64", failures: %"PRIu64", skipped: "
+                "%"PRIu64, files, size, lookup, failures, skipped);
 
 
 out:

@@ -51,6 +51,10 @@
 #define OPT_SERVER_AUX_GIDS             "nfs.server-aux-gids"
 #define OPT_SERVER_GID_CACHE_TIMEOUT    "nfs.server.aux-gid-timeout"
 
+/* TODO: DATADIR should be based on configure's $(localstatedir) */
+#define DATADIR                         "/var/lib/glusterd"
+#define NFS_DATADIR                     DATADIR "/nfs"
+
 /* Every NFS version must call this function with the init function
  * for its particular version.
  */
@@ -696,6 +700,15 @@ nfs_init_state (xlator_t *this)
                         nfs->mount_udp = 1;
         }
 
+        nfs->rmtab = NFS_DATADIR "/rmtab";
+        if (dict_get(this->options, "nfs.mount-rmtab")) {
+                ret = dict_get_str (this->options, "nfs.mount-rmtab", &nfs->rmtab);
+                if (ret == -1) {
+                        gf_log (GF_NFS, GF_LOG_ERROR, "Failed to parse dict");
+                        goto free_foppool;
+                }
+        }
+
         /* support both options rpc-auth.ports.insecure and
          * rpc-auth-allow-insecure for backward compatibility
          */
@@ -815,6 +828,49 @@ nfs_drc_init (xlator_t *this)
  out:
         return ret;
 }
+
+
+#if 0
+/* reconfigure() is currently not used for the NFS-server. Upon setting an
+ * option for the NFS-xlator, the glusterfs process it restarted.
+ *
+ * This current implementation makes sure to read the currently used rmtab and
+ * merge it with the new rmtab.
+ *
+ * As this function is never called, it is provided for the future, for when
+ * the NFS-server supports reloading.
+ */
+int
+reconfigure (xlator_t *this, dict_t *options)
+{
+        int                       ret = 0;
+        char                     *rmtab = NULL;
+        struct nfs_state         *nfs = NULL;
+
+        nfs = (struct nfs_state *)this->private;
+
+        if (!nfs) {
+                gf_log_callingfn (this->name, GF_LOG_DEBUG, "conf == null!!!");
+                goto out;
+        }
+
+        ret = dict_get_str (options, "nfs.mount-rmtab", &rmtab);
+        if (ret) {
+                goto out;
+        }
+        gf_path_strip_trailing_slashes (rmtab);
+
+        if (strcmp (nfs->rmtab, rmtab) != 0) {
+                mount_rewrite_rmtab (nfs->mstate, rmtab);
+
+                gf_log (this->name, GF_LOG_INFO,
+                        "Reconfigured nfs.mount-rmtab path: %s", nfs->rmtab);
+        }
+
+out:
+        return ret;
+}
+#endif /* glusterfs/nfs is restarted and reconfigure() is never called */
 
 int
 init (xlator_t *this) {
@@ -1065,23 +1121,31 @@ struct xlator_dumpops dumpops = {
 struct volume_options options[] = {
         { .key  = {"nfs3.read-size"},
           .type = GF_OPTION_TYPE_SIZET,
+          .min  = GF_NFS3_RTMIN,
+          .max  = GF_NFS3_RTMAX,
           .default_value = TOSTRING(GF_NFS3_RTPREF),
           .description = "Size in which the client should issue read requests"
                          " to the Gluster NFSv3 server. Must be a multiple of"
-                         " 4KB."
+                         " 4KB. Max supported value is 1MB(1048576)."
         },
         { .key  = {"nfs3.write-size"},
           .type = GF_OPTION_TYPE_SIZET,
+          .min  = GF_NFS3_WTMIN,
+          .max  = GF_NFS3_WTMAX,
           .default_value = TOSTRING(GF_NFS3_WTPREF),
           .description = "Size in which the client should issue write requests"
                          " to the Gluster NFSv3 server. Must be a multiple of"
-                         " 4KB."
+                         " 4KB. Max supported value is 1MB(1048576)."
         },
         { .key  = {"nfs3.readdir-size"},
           .type = GF_OPTION_TYPE_SIZET,
+          .min  = GF_NFS3_DTMIN,
+          .max  = GF_NFS3_DTMAX,
           .default_value = TOSTRING(GF_NFS3_DTPREF),
-          .description = "Size in which the client should issue directory "
-                         " reading requests."
+          .description = "Size in which the client should issue directory"
+                         " reading requests to Gluster NFSv3 server. Must"
+                         " be a multiple of 4KB. Max supported value is"
+                         " 1MB(1048576)."
         },
         { .key  = {"nfs3.*.volume-access"},
           .type = GF_OPTION_TYPE_STR,
@@ -1336,6 +1400,15 @@ struct volume_options options[] = {
                          "Required for some Solaris and AIX NFS clients. "
                          "The need for enabling this option often depends "
                          "on the usage of NLM."
+        },
+        { .key = {"nfs.mount-rmtab"},
+          .type = GF_OPTION_TYPE_PATH,
+          .default_value = DATADIR "/rmtab",
+          .description = "Set the location of the cache file that is used to "
+                         "list all the NFS-clients that have connected "
+                         "through the MOUNT protocol. If this is on shared "
+                         "storage, all GlusterFS servers will update and "
+                         "output (with 'showmount') the same list."
         },
         { .key = {OPT_SERVER_AUX_GIDS},
           .type = GF_OPTION_TYPE_BOOL,

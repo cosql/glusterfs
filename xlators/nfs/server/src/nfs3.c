@@ -265,8 +265,10 @@ out:
                         xlatorp = nfs3_fh_to_xlator (cst->nfs3state,    \
                                                      &cst->resolvefh);  \
                         uuid_unparse (cst->resolvefh.gfid, gfid);       \
-                        sprintf (buf, "(%s) %s : %s", trans->peerinfo.identifier,\
-                        xlatorp ? xlatorp->name : "ERR", gfid);         \
+                        snprintf (buf, sizeof (buf), "(%s) %s : %s",             \
+                                  trans->peerinfo.identifier,           \
+                                  xlatorp ? xlatorp->name : "ERR",      \
+                                  gfid );                                \
                         gf_log (GF_NFS3, GF_LOG_ERROR, "%s: %s",        \
                                 strerror(cst->resolve_errno), buf);     \
                         nfstat = nfs3_errno_to_nfsstat3 (cst->resolve_errno);\
@@ -285,8 +287,10 @@ out:
                         xlatorp = nfs3_fh_to_xlator (cst->nfs3state,    \
                                                      &cst->resolvefh);  \
                         uuid_unparse (cst->resolvefh.gfid, gfid);       \
-                        sprintf (buf, "(%s) %s : %s", trans->peerinfo.identifier,\
-                        xlatorp ? xlatorp->name : "ERR", gfid);         \
+                        snprintf (buf, sizeof (buf), "(%s) %s : %s",             \
+                                  trans->peerinfo.identifier,     \
+                                  xlatorp ? xlatorp->name : "ERR",      \
+                                  gfid);         \
                         gf_log (GF_NFS3, GF_LOG_ERROR, "%s: %s",        \
                                 strerror(cst->resolve_errno), buf);     \
                         nfstat = nfs3_errno_to_nfsstat3 (cs->resolve_errno);\
@@ -554,23 +558,18 @@ nfs3svc_submit_reply (rpcsvc_request_t *req, void *arg, nfs3_serializer sfunc)
 
         iobref = iobref_new ();
         if (!iobref) {
-                iobuf_unref (iob);
                 gf_log (GF_NFS3, GF_LOG_ERROR, "failed on iobref_new()");
                 goto ret;
         }
 
-        iobref_add (iobref, iob);
+        ret = iobref_add (iobref, iob);
+        if (ret) {
+                gf_log (GF_NFS3, GF_LOG_ERROR, "Failed to add iob to iobref");
+                goto ret;
+        }
 
         /* Then, submit the message for transmission. */
         ret = rpcsvc_submit_message (req, &outmsg, 1, NULL, 0, iobref);
-
-        /* Now that we've done our job of handing the message to the RPC layer
-         * we can safely unref the iob in the hope that RPC layer must have
-         * ref'ed the iob on receiving into the txlist.
-         */
-        iobuf_unref (iob);
-        iobref_unref (iobref);
-
         if (ret == -1) {
                 gf_log (GF_NFS3, GF_LOG_ERROR, "Reply submission failed");
                 goto ret;
@@ -578,6 +577,14 @@ nfs3svc_submit_reply (rpcsvc_request_t *req, void *arg, nfs3_serializer sfunc)
 
         ret = 0;
 ret:
+        /* Now that we've done our job of handing the message to the RPC layer
+         * we can safely unref the iob in the hope that RPC layer must have
+         * ref'ed the iob on receiving into the txlist.
+         */
+        if (NULL != iob)
+                iobuf_unref (iob);
+        if (NULL != iobref)
+                iobref_unref (iobref);
         return ret;
 }
 
@@ -609,19 +616,14 @@ nfs3svc_submit_vector_reply (rpcsvc_request_t *req, void *arg,
                 new_iobref = 1;
         }
 
-        iobref_add (iobref, iob);
+        ret = iobref_add (iobref, iob);
+        if (ret) {
+                gf_log (GF_NFS3, GF_LOG_ERROR, "Failed to add iob to iobref");
+                goto ret;
+        }
 
         /* Then, submit the message for transmission. */
         ret = rpcsvc_submit_message (req, &outmsg, 1, payload, vcount, iobref);
-
-        /* Now that we've done our job of handing the message to the RPC layer
-         * we can safely unref the iob in the hope that RPC layer must have
-         * ref'ed the iob on receiving into the txlist.
-         */
-        iobuf_unref (iob);
-        if (new_iobref)
-                iobref_unref (iobref);
-
         if (ret == -1) {
                 gf_log (GF_NFS3, GF_LOG_ERROR, "Reply submission failed");
                 goto ret;
@@ -629,6 +631,14 @@ nfs3svc_submit_vector_reply (rpcsvc_request_t *req, void *arg,
 
         ret = 0;
 ret:
+        /* Now that we've done our job of handing the message to the RPC layer
+         * we can safely unref the iob in the hope that RPC layer must have
+         * ref'ed the iob on receiving into the txlist.
+         */
+        if (NULL != iob)
+                iobuf_unref (iob);
+        if (new_iobref)
+                iobref_unref (iobref);
         return ret;
 }
 
@@ -1313,7 +1323,11 @@ nfs3_lookup_parentdir_resume (void *carg)
         nfs3_call_state_t               *cs = NULL;
         inode_t                         *parent = NULL;
 
-        GF_VALIDATE_OR_GOTO (GF_NFS3, carg, nfs3err);
+        if (!carg) {
+                gf_log (GF_NFS3, GF_LOG_ERROR, "Invalid argument,"
+                        " carg value NULL");
+                return EINVAL;
+        }
 
         cs = (nfs3_call_state_t *)carg;
         nfs3_check_fh_resolve_status (cs, stat, nfs3err);
@@ -1384,7 +1398,11 @@ nfs3_lookup_resume (void *carg)
         nfs3_call_state_t               *cs = NULL;
         struct nfs3_fh                  newfh = {{0},};
 
-        GF_VALIDATE_OR_GOTO (GF_NFS3, carg, nfs3err);
+        if (!carg) {
+                gf_log (GF_NFS3, GF_LOG_ERROR, "Invalid argument,"
+                        " carg value NULL");
+                return EINVAL;
+        }
 
         cs = (nfs3_call_state_t *)carg;
         nfs3_check_fh_resolve_status (cs, stat, nfs3err);
@@ -1539,7 +1557,11 @@ nfs3_access_resume (void *carg)
         nfs_user_t              nfu = {0, };
         nfs3_call_state_t       *cs = NULL;
 
-        GF_VALIDATE_OR_GOTO (GF_NFS3, carg, nfs3err);
+        if (!carg) {
+                gf_log (GF_NFS3, GF_LOG_ERROR, "Invalid argument,"
+                        " carg value NULL");
+                return EINVAL;
+        }
 
         cs = (nfs3_call_state_t *)carg;
         nfs3_check_fh_resolve_status (cs, stat, nfs3err);
@@ -2631,13 +2653,7 @@ nfs3svc_create (rpcsvc_request_t *req)
         }
 
         cval = (uint64_t *)args.how.createhow3_u.verf;
-        if (cval)
-                cverf = *cval;
-        else {
-                gf_log(GF_NFS3, GF_LOG_ERROR,
-                       "Error getting createverf3 from args");
-                goto rpcerr;
-        }
+        cverf = *cval;
 
         ret = nfs3_create (req, &dirfh, name, args.how.mode,
                            &args.how.createhow3_u.obj_attributes, cverf);
@@ -4382,16 +4398,8 @@ nfs3svc_readdir (rpcsvc_request_t *req)
                 rpcsvc_request_seterr (req, GARBAGE_ARGS);
                 goto rpcerr;
         }
-
         cval = (uint64_t *) ra.cookieverf;
-
-        if (cval)
-                verf =  *cval;
-        else {
-                gf_log(GF_NFS3, GF_LOG_ERROR,
-                       "Error getting cookieverf from readdir args");
-                goto rpcerr;
-        }
+        verf =  *cval;
 
         ret = nfs3_readdir (req, &fh, ra.cookie, verf, ra.count, 0);
         if ((ret < 0) && (ret != RPCSVC_ACTOR_IGNORE)) {
@@ -4422,16 +4430,8 @@ nfs3svc_readdirp (rpcsvc_request_t *req)
                 rpcsvc_request_seterr (req, GARBAGE_ARGS);
                 goto rpcerr;
         }
-
         cval = (uint64_t *) ra.cookieverf;
-
-        if (cval)
-                cverf = *cval;
-        else {
-                gf_log (GF_NFS3, GF_LOG_ERROR,
-                        "Error getting cookieverf from readdirp args");
-                goto rpcerr;
-	}
+        cverf = *cval;
 
         ret = nfs3_readdir (req, &fh, ra.cookie, cverf, ra.dircount,
                             ra.maxcount);
@@ -5520,7 +5520,7 @@ nfs3_init_state (xlator_t *nfsx)
         LOCK_INIT (&nfs3->fdlrulock);
         nfs3->fdcount = 0;
 
-        rpcsvc_create_listeners (nfs->rpcsvc, nfsx->options, nfsx->name);
+        ret = rpcsvc_create_listeners (nfs->rpcsvc, nfsx->options, nfsx->name);
         if (ret == -1) {
                 gf_log (GF_NFS, GF_LOG_ERROR, "Unable to create listeners");
                 goto free_localpool;

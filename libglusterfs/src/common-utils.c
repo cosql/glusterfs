@@ -59,6 +59,16 @@ struct dnscache6 {
         struct addrinfo *next;
 };
 
+void
+md5_wrapper(const unsigned char *data, size_t len, char *md5)
+{
+        unsigned short i = 0;
+        unsigned short lim = MD5_DIGEST_LENGTH*2+1;
+        unsigned char scratch[MD5_DIGEST_LENGTH] = {0,};
+        MD5(data, len, scratch);
+        for (; i < MD5_DIGEST_LENGTH; i++)
+                snprintf(md5 + i * 2, lim-i*2, "%02x", scratch[i]);
+}
 
 /* works similar to mkdir(1) -p.
  */
@@ -1490,6 +1500,12 @@ gf_string2percent_or_bytesize (const char *str,
                         return -1;
         }
 
+        /* Error out if we cannot store the value in uint64 */
+        if (value > UINT64_MAX) {
+                errno = EOVERFLOW;
+                return -1;
+        }
+
         *n = (uint64_t) value;
 
         return 0;
@@ -2797,3 +2813,91 @@ out:
 
 }
 
+
+/* Sets log file path from user provided arguments */
+int
+gf_set_log_file_path (cmd_args_t *cmd_args)
+{
+        int   i = 0;
+        int   j = 0;
+        int   ret = 0;
+        char  tmp_str[1024] = {0,};
+
+        if (!cmd_args)
+                goto done;
+
+        if (cmd_args->mount_point) {
+                j = 0;
+                i = 0;
+                if (cmd_args->mount_point[0] == '/')
+                        i = 1;
+                for (; i < strlen (cmd_args->mount_point); i++,j++) {
+                        tmp_str[j] = cmd_args->mount_point[i];
+                        if (cmd_args->mount_point[i] == '/')
+                                tmp_str[j] = '-';
+                }
+
+                ret = gf_asprintf (&cmd_args->log_file,
+                                   DEFAULT_LOG_FILE_DIRECTORY "/%s.log",
+                                   tmp_str);
+                if (ret > 0)
+                        ret = 0;
+                goto done;
+        }
+
+        if (cmd_args->volfile) {
+                j = 0;
+                i = 0;
+                if (cmd_args->volfile[0] == '/')
+                        i = 1;
+                for (; i < strlen (cmd_args->volfile); i++,j++) {
+                        tmp_str[j] = cmd_args->volfile[i];
+                        if (cmd_args->volfile[i] == '/')
+                                tmp_str[j] = '-';
+                }
+                ret = gf_asprintf (&cmd_args->log_file,
+                                   DEFAULT_LOG_FILE_DIRECTORY "/%s.log",
+                                   tmp_str);
+                if (ret > 0)
+                        ret = 0;
+                goto done;
+        }
+
+        if (cmd_args->volfile_server) {
+
+                ret = gf_asprintf (&cmd_args->log_file,
+                                   DEFAULT_LOG_FILE_DIRECTORY "/%s-%s-%d.log",
+                                   cmd_args->volfile_server,
+                                   cmd_args->volfile_id, getpid());
+                if (ret > 0)
+                        ret = 0;
+        }
+done:
+        return ret;
+}
+
+int
+gf_thread_create (pthread_t *thread, const pthread_attr_t *attr,
+		  void *(*start_routine)(void *), void *arg)
+{
+	sigset_t set, old;
+	int ret;
+
+	sigemptyset (&set);
+
+	sigfillset (&set);
+	sigdelset (&set, SIGSEGV);
+	sigdelset (&set, SIGBUS);
+	sigdelset (&set, SIGILL);
+	sigdelset (&set, SIGSYS);
+	sigdelset (&set, SIGFPE);
+	sigdelset (&set, SIGABRT);
+
+	pthread_sigmask (SIG_BLOCK, &set, &old);
+
+	ret = pthread_create (thread, attr, start_routine, arg);
+
+	pthread_sigmask (SIG_SETMASK, &old, NULL);
+
+	return ret;
+}

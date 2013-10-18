@@ -18,6 +18,7 @@
 #include "rpc-clnt.h"
 #include "glusterfs.h"
 #include "protocol-common.h"
+#include "logging.h"
 
 #include "cli1-xdr.h"
 
@@ -30,10 +31,8 @@
 #define CLI_GLUSTERD_PORT                  24007
 #define CLI_DEFAULT_CONN_TIMEOUT             120
 #define CLI_DEFAULT_CMD_TIMEOUT              120
-#define CLI_TOP_CMD_TIMEOUT                  600 //Longer timeout for volume top
+#define CLI_TEN_MINUTES_TIMEOUT              600 //Longer timeout for volume top
 #define DEFAULT_CLI_LOG_FILE_DIRECTORY     DATADIR "/log/glusterfs"
-#define DEFAULT_LOG_FILE_DIRECTORY         DATADIR "/log/glusterfs"
-#define DEFAULT_VAR_RUN_DIRECTORY          DATADIR "/run/gluster"
 #define CLI_VOL_STATUS_BRICK_LEN              55
 #define CLI_TAB_LENGTH                         8
 #define CLI_BRICK_STATUS_LINE_LEN             78
@@ -66,6 +65,7 @@ struct cli_cmd;
 
 extern char *cli_vol_type_str[];
 extern char *cli_vol_status_str[];
+extern char *cli_vol_task_status_str[];
 
 typedef int (cli_cmd_cbk_t)(struct cli_state *state,
                             struct cli_cmd_word *word,
@@ -147,6 +147,18 @@ struct cli_local {
 #endif
 };
 
+struct gf_cli_gsync_detailed_status_ {
+        char *node;
+        char *master;
+        char *slave;
+        char *health;
+        char *uptime;
+        char *files_syncd;
+        char *files_pending;
+        char *bytes_pending;
+        char *deletes_pending;
+};
+
 struct cli_volume_status {
         int            port;
         int            online;
@@ -164,6 +176,8 @@ struct cli_volume_status {
         char          *inode_size;
 #endif
 };
+
+typedef struct gf_cli_gsync_detailed_status_ gf_cli_gsync_status_t;
 
 typedef struct cli_volume_status cli_volume_status_t;
 
@@ -229,7 +243,7 @@ cli_cmd_quota_parse (const char **words, int wordcount, dict_t **opt);
 
 int32_t
 cli_cmd_volume_set_parse (const char **words, int wordcount,
-                          dict_t **options);
+                          dict_t **options, char **op_errstr);
 
 int32_t
 cli_cmd_volume_add_brick_parse (const char **words, int wordcount,
@@ -379,6 +393,8 @@ cli_xml_output_generic_volume (char *op, dict_t *dict, int op_ret, int op_errno,
 int
 cli_xml_output_vol_gsync (dict_t *dict, int op_ret, int op_errno,
                           char *op_errstr);
+int
+cli_xml_output_vol_status_tasks_detail (cli_local_t *local, dict_t *dict);
 
 char *
 is_server_debug_xlator (void *myframe);

@@ -2162,8 +2162,6 @@ socket_connect_finish (rpc_transport_t *this)
                                 priv->connect_finish_log = 1;
                         }
                         __socket_disconnect (this);
-                        notify_rpc = 1;
-                        event = RPC_TRANSPORT_DISCONNECT;
                         goto unlock;
                 }
 
@@ -2425,7 +2423,7 @@ socket_spawn (rpc_transport_t *this)
         gf_log (this->name, GF_LOG_TRACE,
                 "spawning %p with gen %u", this, priv->ot_gen);
 
-        if (pthread_create(&priv->thread,NULL,socket_poller,this) != 0) {
+        if (gf_thread_create(&priv->thread,NULL,socket_poller,this) != 0) {
                 gf_log (this->name, GF_LOG_ERROR,
                         "could not create poll thread");
         }
@@ -2469,7 +2467,7 @@ socket_server_event_handler (int fd, int idx, void *data,
                                 goto unlock;
                         }
 
-                        if (priv->nodelay) {
+                        if (priv->nodelay && (new_sockaddr.ss_family != AF_UNIX)) {
                                 ret = __socket_nodelay (new_sock);
                                 if (ret == -1) {
                                         gf_log (this->name, GF_LOG_WARNING,
@@ -2753,7 +2751,7 @@ socket_connect (rpc_transport_t *this, int port)
                         }
                 }
 
-                if (priv->nodelay) {
+                if (priv->nodelay && (sa_family != AF_UNIX)) {
                         ret = __socket_nodelay (priv->sock);
 
                         if (ret == -1) {
@@ -2967,7 +2965,7 @@ socket_listen (rpc_transport_t *this)
                         }
                 }
 
-                if (priv->nodelay) {
+                if (priv->nodelay && (sa_family != AF_UNIX)) {
                         ret = __socket_nodelay (priv->sock);
                         if (ret == -1) {
                                 gf_log (this->name, GF_LOG_ERROR,

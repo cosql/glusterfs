@@ -65,6 +65,11 @@ struct nfs3_fh {
 
         /* File/dir gfid. */
         uuid_t                  gfid;
+        /* This structure must be exactly NFS3_FHSIZE (64) bytes long.
+           Having the structure shorter results in buffer overflows
+           during XDR decoding.
+        */
+        unsigned char padding[NFS3_FHSIZE - GF_NFSFH_STATIC_SIZE];
 } __attribute__((__packed__));
 
 #define GF_NFS3FH_STATIC_INITIALIZER    {{0},}
@@ -92,7 +97,7 @@ extern void
 nfs3_log_fh (struct nfs3_fh *fh);
 
 extern void
-nfs3_fh_to_str (struct nfs3_fh *fh, char *str);
+nfs3_fh_to_str (struct nfs3_fh *fh, char *str, size_t len);
 
 extern int
 nfs3_fh_build_parent_fh (struct nfs3_fh *child, struct iatt *newstat,

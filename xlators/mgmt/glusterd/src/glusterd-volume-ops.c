@@ -915,7 +915,9 @@ glusterd_op_stage_start_volume (dict_t *dict, char **op_errstr)
                         continue;
 
                 ret = gf_lstat_dir (brickinfo->path, NULL);
-                if (ret) {
+                if (ret && (flags & GF_CLI_FLAG_OP_FORCE)) {
+                        continue;
+                } else if (ret) {
                         snprintf (msg, sizeof (msg), "Failed to find "
                                           "brick directory %s for volume %s. "
                                           "Reason : %s", brickinfo->path,
@@ -1209,14 +1211,22 @@ glusterd_op_stage_heal_volume (dict_t *dict, char **op_errstr)
                 goto out;
         }
 
-        if ((heal_op != GF_AFR_OP_INDEX_SUMMARY) &&
-            !glusterd_is_nodesvc_online ("glustershd")) {
-                ret = -1;
-                *op_errstr = gf_strdup ("Self-heal daemon is not running."
-                                        " Check self-heal daemon log file.");
-                gf_log (this->name, GF_LOG_WARNING, "%s", "Self-heal daemon is "
-                        "not running. Check self-heal daemon log file.");
-                goto out;
+        switch (heal_op) {
+                case GF_AFR_OP_INDEX_SUMMARY:
+                case GF_AFR_OP_STATISTICS_HEAL_COUNT:
+                case GF_AFR_OP_STATISTICS_HEAL_COUNT_PER_REPLICA:
+                        break;
+                default:
+                        if (!glusterd_is_nodesvc_online("glustershd")){
+                                ret = -1;
+                                *op_errstr = gf_strdup ("Self-heal daemon is "
+                                                "not running. Check self-heal "
+                                                "daemon log file.");
+                                gf_log (this->name, GF_LOG_WARNING, "%s",
+                                        "Self-heal daemon is not running."
+                                        "Check self-heal daemon log file.");
+                                goto out;
+                        }
         }
 
         ret = 0;
@@ -1652,6 +1662,8 @@ glusterd_op_create_volume (dict_t *dict, char **op_errstr)
                 i++;
         }
 
+        gd_update_volume_op_versions (volinfo);
+
         ret = glusterd_store_volinfo (volinfo, GLUSTERD_VOLINFO_VER_AC_INCREMENT);
         if (ret) {
                 glusterd_store_delete_volume (volinfo);
@@ -1669,7 +1681,6 @@ glusterd_op_create_volume (dict_t *dict, char **op_errstr)
         list_add_tail (&volinfo->vol_list, &priv->volumes);
         vol_added = _gf_true;
 
-        gd_update_volume_op_versions (volinfo);
 out:
         GF_FREE(free_ptr);
         if (!vol_added && volinfo)
@@ -1703,7 +1714,10 @@ glusterd_op_start_volume (dict_t *dict, char **op_errstr)
 
         list_for_each_entry (brickinfo, &volinfo->bricks, brick_list) {
                 ret = glusterd_brick_start (volinfo, brickinfo, _gf_true);
-                if (ret)
+                /* If 'force' try to start all bricks regardless of success or
+                 * failure
+                 */
+                if (!(flags & GF_CLI_FLAG_OP_FORCE) && ret)
                         goto out;
         }
 

@@ -42,8 +42,7 @@
 #include <stdio.h>
 
 #include "xdr-rpcclnt.h"
-
-#define ACL_PROGRAM 100227
+#include "glusterfs-acl.h"
 
 struct rpcsvc_program gluster_dump_prog;
 
@@ -281,6 +280,8 @@ rpcsvc_request_destroy (rpcsvc_request_t *req)
                 iobuf_unref (req->hdr_iobuf);
 
         rpc_transport_unref (req->trans);
+
+	GF_FREE (req->auxgidlarge);
 
         mem_put (req);
 

@@ -25,6 +25,13 @@
 #define SYNCENV_PROC_MIN 2
 #define SYNCPROC_IDLE_TIME 600
 
+/*
+ * Flags for syncopctx valid elements
+ */
+#define SYNCOPCTX_UID    0x00000001
+#define SYNCOPCTX_GID    0x00000002
+#define SYNCOPCTX_GROUPS 0x00000004
+
 struct synctask;
 struct syncproc;
 struct syncenv;
@@ -41,6 +48,7 @@ typedef enum {
         SYNCTASK_SUSPEND,
         SYNCTASK_WAIT,
         SYNCTASK_DONE,
+	SYNCTASK_ZOMBIE,
 } synctask_state_t;
 
 /* for one sequential execution of @syncfn */
@@ -89,6 +97,9 @@ struct syncenv {
         int                 runcount;
         struct list_head    waitq;
         int                 waitcount;
+
+	int                 procmin;
+	int                 procmax;
 
         pthread_mutex_t     mutex;
         pthread_cond_t      cond;
@@ -146,6 +157,14 @@ struct syncargs {
 	int                 done;
 };
 
+struct syncopctx {
+        unsigned int valid;  /* valid flags for elements that are set */
+        uid_t        uid;
+        gid_t        gid;
+        int          grpsize;
+        int          ngrps;
+        gid_t       *groups;
+};
 
 #define __yawn(args) do {                                       \
         args->task = synctask_get ();                           \
@@ -219,11 +238,14 @@ struct syncargs {
 
 #define SYNCENV_DEFAULT_STACKSIZE (2 * 1024 * 1024)
 
-struct syncenv * syncenv_new ();
+struct syncenv * syncenv_new (size_t stacksize, int procmin, int procmax);
 void syncenv_destroy (struct syncenv *);
 void syncenv_scale (struct syncenv *env);
 
 int synctask_new (struct syncenv *, synctask_fn_t, synctask_cbk_t, call_frame_t* frame, void *);
+struct synctask *synctask_create (struct syncenv *, synctask_fn_t,
+				  synctask_cbk_t, call_frame_t *, void *);
+int synctask_join (struct synctask *task);
 void synctask_wake (struct synctask *task);
 void synctask_yield (struct synctask *task);
 void synctask_waitfor (struct synctask *task, int count);
@@ -235,20 +257,64 @@ void synctask_waitfor (struct synctask *task, int count);
 int synctask_setid (struct synctask *task, uid_t uid, gid_t gid);
 #define SYNCTASK_SETID(uid, gid) synctask_setid (synctask_get(), uid, gid);
 
+int syncopctx_setfsuid (void *uid);
+int syncopctx_setfsgid (void *gid);
+int syncopctx_setfsgroups (int count, const void *groups);
 
 static inline call_frame_t *
 syncop_create_frame (xlator_t *this)
 {
-	call_frame_t  *frame = NULL;
+	call_frame_t     *frame = NULL;
+	int               ngrps = -1;
+	struct syncopctx *opctx = NULL;
 
 	frame = create_frame (this, this->ctx->pool);
 	if (!frame)
 		return NULL;
 
-	frame->root->pid = getpid();
-	frame->root->uid = geteuid ();
-	frame->root->gid = getegid ();
-        frame->root->ngrps = getgroups (GF_MAX_AUX_GROUPS, frame->root->groups);
+	frame->root->pid = getpid ();
+
+	opctx = syncopctx_getctx ();
+	if (opctx && (opctx->valid & SYNCOPCTX_UID))
+		frame->root->uid = opctx->uid;
+	else
+		frame->root->uid = geteuid ();
+
+	if (opctx && (opctx->valid & SYNCOPCTX_GID))
+		frame->root->gid = opctx->gid;
+	else
+		frame->root->gid = getegid ();
+
+	if (opctx && (opctx->valid & SYNCOPCTX_GROUPS)) {
+		ngrps = opctx->ngrps;
+
+		if (ngrps != 0 && opctx->groups != NULL) {
+			if (call_stack_alloc_groups (frame->root, ngrps) != 0) {
+				STACK_DESTROY (frame->root);
+				return NULL;
+			}
+
+			memcpy (frame->root->groups, opctx->groups,
+				(sizeof (gid_t) * ngrps));
+		}
+	}
+	else {
+		ngrps = getgroups (0, 0);
+		if (ngrps < 0) {
+			STACK_DESTROY (frame->root);
+			return NULL;
+		}
+
+		if (call_stack_alloc_groups (frame->root, ngrps) != 0) {
+			STACK_DESTROY (frame->root);
+			return NULL;
+		}
+
+		if (getgroups (ngrps, frame->root->groups) < 0) {
+			STACK_DESTROY (frame->root);
+			return NULL;
+		}
+	}
 
 	return frame;
 }

@@ -16,20 +16,8 @@
 #include "glfs.h"
 #include "compat-errno.h"
 
-#define DEFAULT_REVAL_COUNT 1
 
-#define ESTALE_RETRY(ret,errno,reval,loc,label) do {	\
-	if (ret == -1 && errno == ESTALE) {	        \
-		if (reval < DEFAULT_REVAL_COUNT) {	\
-			reval++;			\
-			loc_wipe (loc);			\
-			goto label;			\
-		}					\
-	}						\
-	} while (0)
-
-
-static int
+int
 glfs_loc_link (loc_t *loc, struct iatt *iatt)
 {
 	int ret = -1;
@@ -54,7 +42,7 @@ glfs_loc_link (loc_t *loc, struct iatt *iatt)
 }
 
 
-static void
+void
 glfs_iatt_to_stat (struct glfs *fs, struct iatt *iatt, struct stat *stat)
 {
 	iatt_to_stat (iatt, stat);
@@ -62,7 +50,7 @@ glfs_iatt_to_stat (struct glfs *fs, struct iatt *iatt, struct stat *stat)
 }
 
 
-static int
+int
 glfs_loc_unlink (loc_t *loc)
 {
 	inode_unlink (loc->inode, loc->parent, loc->name);
@@ -138,7 +126,8 @@ out:
 	if (ret && glfd) {
 		glfs_fd_destroy (glfd);
 		glfd = NULL;
-	} else {
+	} else if (glfd) {
+                glfd->fd->flags = flags;
 		fd_bind (glfd->fd);
 		glfs_fd_bind (glfd);
 	}
@@ -160,6 +149,11 @@ glfs_close (struct glfs_fd *glfd)
 	__glfs_entry_fd (glfd);
 
 	subvol = glfs_active_subvol (glfd->fs);
+        if (!subvol) {
+                ret = -1;
+                errno = EIO;
+                goto out;
+        }
 
 	fd = glfs_resolve_fd (glfd->fs, subvol, glfd);
 	if (!fd) {
@@ -390,8 +384,12 @@ retry:
 		goto out;
 	}
 
-	ret = syncop_create (subvol, &loc, flags, mode, glfd->fd,
-			     xattr_req, &iatt);
+	if (ret == 0) {
+		ret = syncop_open (subvol, &loc, flags, glfd->fd);
+	} else {
+		ret = syncop_create (subvol, &loc, flags, mode, glfd->fd,
+				     xattr_req, &iatt);
+	}
 
 	ESTALE_RETRY (ret, errno, reval, &loc, retry);
 
@@ -406,7 +404,8 @@ out:
 	if (ret && glfd) {
 		glfs_fd_destroy (glfd);
 		glfd = NULL;
-	} else {
+	} else if (glfd) {
+                glfd->fd->flags = flags;
 		fd_bind (glfd->fd);
 		glfs_fd_bind (glfd);
 	}
@@ -486,13 +485,13 @@ glfs_preadv (struct glfs_fd *glfd, const struct iovec *iovec, int iovcnt,
 
 	glfd->offset = (offset + size);
 
-	if (iov)
-		GF_FREE (iov);
-	if (iobref)
-		iobref_unref (iobref);
-
 	ret = size;
 out:
+        if (iov)
+                GF_FREE (iov);
+        if (iobref)
+                iobref_unref (iobref);
+
 	if (fd)
 		fd_unref (fd);
 
@@ -578,10 +577,6 @@ glfs_io_async_task (void *data)
 	ssize_t         ret = 0;
 
 	switch (gio->op) {
-	case GF_FOP_READ:
-		ret = glfs_preadv (gio->glfd, gio->iov, gio->count,
-				   gio->offset, gio->flags);
-		break;
 	case GF_FOP_WRITE:
 		ret = glfs_pwritev (gio->glfd, gio->iov, gio->count,
 				    gio->offset, gio->flags);
@@ -605,23 +600,90 @@ glfs_io_async_task (void *data)
 
 
 int
+glfs_preadv_async_cbk (call_frame_t *frame, void *cookie, xlator_t *this,
+		       int op_ret, int op_errno, struct iovec *iovec,
+		       int count, struct iatt *stbuf, struct iobref *iobref,
+		       dict_t *xdata)
+{
+	struct glfs_io *gio = NULL;
+	xlator_t       *subvol = NULL;
+	struct glfs    *fs = NULL;
+	struct glfs_fd *glfd = NULL;
+
+
+	gio = frame->local;
+	frame->local = NULL;
+	subvol = cookie;
+	glfd = gio->glfd;
+	fs = glfd->fs;
+
+	if (op_ret <= 0)
+		goto out;
+
+	op_ret = iov_copy (gio->iov, gio->count, iovec, count);
+
+	glfd->offset = gio->offset + op_ret;
+out:
+	errno = op_errno;
+	gio->fn (gio->glfd, op_ret, gio->data);
+
+	GF_FREE (gio->iov);
+	GF_FREE (gio);
+	STACK_DESTROY (frame->root);
+	glfs_subvol_done (fs, subvol);
+
+	return 0;
+}
+
+
+int
 glfs_preadv_async (struct glfs_fd *glfd, const struct iovec *iovec, int count,
 		   off_t offset, int flags, glfs_io_cbk fn, void *data)
 {
 	struct glfs_io *gio = NULL;
 	int             ret = 0;
+	call_frame_t   *frame = NULL;
+	xlator_t       *subvol = NULL;
+	glfs_t         *fs = NULL;
+	fd_t           *fd = NULL;
+
+	__glfs_entry_fd (glfd);
+
+	subvol = glfs_active_subvol (glfd->fs);
+	if (!subvol) {
+		ret = -1;
+		errno = EIO;
+		goto out;
+	}
+
+	fd = glfs_resolve_fd (glfd->fs, subvol, glfd);
+	if (!fd) {
+		ret = -1;
+		errno = EBADFD;
+		goto out;
+	}
+
+	fs = glfd->fs;
+
+	frame = syncop_create_frame (THIS);
+	if (!frame) {
+		ret = -1;
+		errno = ENOMEM;
+		goto out;
+	}
 
 	gio = GF_CALLOC (1, sizeof (*gio), glfs_mt_glfs_io_t);
 	if (!gio) {
+		ret = -1;
 		errno = ENOMEM;
-		return -1;
+		goto out;
 	}
 
 	gio->iov = iov_dup (iovec, count);
 	if (!gio->iov) {
-		GF_FREE (gio);
+		ret = -1;
 		errno = ENOMEM;
-		return -1;
+		goto out;
 	}
 
 	gio->op     = GF_FOP_READ;
@@ -632,14 +694,22 @@ glfs_preadv_async (struct glfs_fd *glfd, const struct iovec *iovec, int count,
 	gio->fn     = fn;
 	gio->data   = data;
 
-	ret = synctask_new (glfs_from_glfd (glfd)->ctx->env,
-			    glfs_io_async_task, glfs_io_async_cbk,
-			    NULL, gio);
+	frame->local = gio;
 
+	STACK_WIND_COOKIE (frame, glfs_preadv_async_cbk, subvol, subvol,
+			   subvol->fops->readv, fd, iov_length (iovec, count),
+			   offset, flags, NULL);
+
+out:
 	if (ret) {
 		GF_FREE (gio->iov);
 		GF_FREE (gio);
+		STACK_DESTROY (frame->root);
+		glfs_subvol_done (fs, subvol);
 	}
+
+	if (fd)
+		fd_unref (fd);
 
 	return ret;
 }
@@ -1205,6 +1275,7 @@ glfs_readlink (struct glfs *fs, const char *path, char *buf, size_t bufsiz)
 	loc_t            loc = {0, };
 	struct iatt      iatt = {0, };
 	int              reval = 0;
+	char            *linkval = NULL;
 
 	__glfs_entry_fs (fs);
 
@@ -1228,7 +1299,11 @@ retry:
 		goto out;
 	}
 
-	ret = syncop_readlink (subvol, &loc, &buf, bufsiz);
+	ret = syncop_readlink (subvol, &loc, &linkval, bufsiz);
+	if (ret > 0) {
+		memcpy (buf, linkval, ret);
+		GF_FREE (linkval);
+	}
 
 	ESTALE_RETRY (ret, errno, reval, &loc, retry);
 out:
@@ -1609,6 +1684,15 @@ retrynew:
 		errno = EISDIR;
 		goto out;
 	}
+
+        /* Filling the inode of the hard link to be same as that of the
+           original file
+        */
+	if (newloc.inode) {
+		inode_unref (newloc.inode);
+		newloc.inode = NULL;
+	}
+        newloc.inode = inode_ref (oldloc.inode);
 
 	ret = syncop_link (subvol, &oldloc, &newloc);
 
