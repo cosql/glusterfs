@@ -47,11 +47,6 @@ extern int daemon(int, int);
 #  define QEMU_VMALLOC_ALIGN getpagesize()
 #endif
 
-#ifdef __FreeBSD__
-#define UTIME_NOW       ((1l << 30) - 1l)
-#define UTIME_OMIT      ((1l << 30) - 2l)
-#endif /* __FreeBSD__ */
-
 #include <glib/gprintf.h>
 
 #include "config-host.h"
