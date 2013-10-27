@@ -540,7 +540,7 @@ fi
 dnl FreeBSD > 5 has execinfo as a Ported library for giving a workaround
 dnl solution to GCC backtrace functionality
 
-AC_CHECK_HEADERS([/usr/local/include/execinfo.h], [have_backtrace=yes],
+AC_CHECK_HEADERS([execinfo.h], [have_backtrace=yes],
                AC_CHECK_LIB([execinfo], [backtrace], [have_backtrace=yes]))
 dnl               AC_MSG_ERROR([libexecinfo not found libexecinfo required.])))
 

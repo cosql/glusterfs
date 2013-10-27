@@ -1125,7 +1125,7 @@ gf_string2int8 (const char *str, int8_t *n)
         if (rv != 0)
                 return rv;
 
-        if (l >= INT8_MIN && l <= INT8_MAX) {
+        if ((l >= INT8_MIN) && (l <= INT8_MAX)) {
                 *n = (int8_t) l;
                 return 0;
         }
@@ -1144,7 +1144,7 @@ gf_string2int16 (const char *str, int16_t *n)
         if (rv != 0)
                 return rv;
 
-        if (l >= INT16_MIN && l <= INT16_MAX) {
+        if ((l >= INT16_MIN) && (l <= INT16_MAX)) {
                 *n = (int16_t) l;
                 return 0;
         }
@@ -1163,7 +1163,7 @@ gf_string2int32 (const char *str, int32_t *n)
         if (rv != 0)
                 return rv;
 
-        if (l >= INT32_MIN && l <= INT32_MAX) {
+        if ((l >= INT32_MIN) && (l <= INT32_MAX)) {
                 *n = (int32_t) l;
                 return 0;
         }
@@ -1182,7 +1182,7 @@ gf_string2int64 (const char *str, int64_t *n)
         if (rv != 0)
                 return rv;
 
-        if (l >= INT64_MIN && l <= INT64_MAX) {
+        if ((l >= INT64_MIN) && (l <= INT64_MAX)) {
                 *n = (int64_t) l;
                 return 0;
         }
@@ -1441,6 +1441,11 @@ gf_string2bytesize (const char *str, uint64_t *n)
                         return -1;
         }
 
+        if ((UINT64_MAX - value) < 0) {
+                errno = ERANGE;
+                return -1;
+        }
+
         *n = (uint64_t) value;
 
         return 0;
@@ -1501,8 +1506,8 @@ gf_string2percent_or_bytesize (const char *str,
         }
 
         /* Error out if we cannot store the value in uint64 */
-        if (value > UINT64_MAX) {
-                errno = EOVERFLOW;
+        if ((UINT64_MAX - value) < 0) {
+                errno = ERANGE;
                 return -1;
         }
 
