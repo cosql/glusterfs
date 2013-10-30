@@ -542,7 +542,7 @@ dnl solution to GCC backtrace functionality
 
 case $host_os in
     *freebsd*)
-        CFLAGS+=" -I/usr/local/include"
+        CFLAGS="${CFLAGS} -I/usr/local/include"
     ;;
 esac
 AC_CHECK_HEADERS([execinfo.h], [have_backtrace=yes],
