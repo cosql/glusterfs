@@ -97,8 +97,8 @@ if test x$GCC = xyes ; then
  -Wpointer-arith -Wbad-function-cast -Wnested-externs"
 fi
 # Set -std=gnu89 if clang is used
-if test x$CC = xclang ; then
- CFLAGS="-std=gnu89 $CFLAGS"
+if test x$CC != xgcc ; then
+ CFLAGS=" -std=gnu89 $CFLAGS"
 fi
 CPPFLAGS="$CPPFLAGS -I$srcdir"
 

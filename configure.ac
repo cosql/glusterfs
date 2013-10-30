@@ -708,7 +708,6 @@ case $host_os in
         GF_FUSE_LIBS="${GF_FUSE_LIBS} /usr/lib/libutil.so"
         GF_FUSE_LDADD="-lutil"
         GF_CFLAGS=" -I/usr/local/include ${GF_CFLAGS}"
-        CFLAGS=" -I/usr/local/include ${CFLAGS}"
         CFLAGS=" -std=gnu89 ${CFLAGS}"
         GF_CFLAGS=" -std=gnu89 ${GF_CFLAGS}"
         GF_GLUSTERFS_CFLAGS="${GF_CFLAGS}"
@@ -718,7 +717,7 @@ case $host_os in
 	 				 echo "have_backtrace"
            GF_GLUSTERFS_LIBS="-lexecinfo"
         fi
-        BUILD_FUSE_CLIENT=yes
+        BUILD_FUSE_CLIENT=no
         BUILD_FUSERMOUNT=no
         ;;
      *bsd*)
