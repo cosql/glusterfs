@@ -11,7 +11,7 @@
 # include <sys/endian.h>
 # include <sys/types.h>
 # include <machine/bswap.h>
-#elif __FreeBSD__
+#elif defined(__FreeBSD__)
 # include <sys/endian.h>
 #elif defined(CONFIG_BYTESWAP_H)
 # include <byteswap.h>
@@ -30,7 +30,7 @@ static inline uint64_t bswap64(uint64_t x)
 {
     return bswap_64(x);
 }
-# elif
+# else
 static inline uint16_t bswap16(uint16_t x)
 {
     return (((x & 0x00ff) << 8) |
