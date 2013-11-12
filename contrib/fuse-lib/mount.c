@@ -184,7 +184,7 @@ build_iovec(struct iovec **iov, int *iovlen, const char *name, void *val,
 	if (*iovlen < 0)
 		return;
 	i = *iovlen;
-	printf("name %s\n", name);
+
 	*iov = realloc(*iov, sizeof **iov * (i + 2));
 	if (*iov == NULL) {
 		*iovlen = -1;
@@ -254,7 +254,6 @@ char errmsg[255];
         build_iovec_argf(&iov, &iovlen, "fd", "%d", fd);
         build_iovec_argf(&iov, &iovlen, "user_id", "%d", getuid());
         build_iovec_argf(&iov, &iovlen, "group_id", "%d", getgid());
-		// build_iovec(&iov, &iovlen, "errmsg", errmsg, sizeof(errmsg));
 		ret = nmount(iov, iovlen, mountflags);
 #else
         ret = mount (source, mountpoint, fstype, mountflags,

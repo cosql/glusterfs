@@ -84,6 +84,11 @@ enum {
 #define sighandler_t sig_t
 #endif
 
+#ifdef  __FreeBSD__
+#undef ino_t
+#define ino_t uint64_t
+#endif /* __FreeBSD__ */
+
 #ifndef ino64_t
 #define ino64_t ino_t
 #endif

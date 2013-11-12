@@ -1,5 +1,5 @@
 
-EXTRA_DIST = glusterd-Debian glusterd-Redhat glusterd-SuSE glusterd.plist rhel5-load-fuse.modules
+EXTRA_DIST = glusterd-Debian glusterd-FreeBSD glusterd-Redhat glusterd-SuSE glusterd.plist rhel5-load-fuse.modules
 
 CLEANFILES = 
 
