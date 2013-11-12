@@ -69,5 +69,3 @@ ls -l $M0/2 2>/dev/null
 
 dd if=/dev/zero of=$M0/2 bs=1 count=1 conv=excl 2>/dev/null
 EXPECT "1" echo $?
-
-cleanup;

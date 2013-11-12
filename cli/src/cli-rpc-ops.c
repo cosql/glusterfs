@@ -1545,8 +1545,6 @@ is_server_debug_xlator (void *myframe)
                 key = *words;
                 words++;
                 value = *words;
-                if (value == NULL)
-                        break;
                 if (strstr (value, "client")) {
                         words++;
                         continue;
@@ -1978,6 +1976,9 @@ gf_cli_remove_brick_cbk (struct rpc_req *req, struct iovec *iov,
                 if (ret) {
                         gf_log ("cli", GF_LOG_ERROR,
                                 "remove-brick-id is not present in dict");
+                        cli_err ("volume remove-brick %s: failed: %s", cmd_str,
+                                 rsp.op_errstr);
+                        goto out;
                 }
                 break;
         case GF_OP_CMD_COMMIT:
@@ -2002,7 +2003,7 @@ gf_cli_remove_brick_cbk (struct rpc_req *req, struct iovec *iov,
         if (global_state->mode & GLUSTER_MODE_XML) {
                 ret = cli_xml_output_vol_remove_brick (_gf_false, rsp_dict,
                                                        rsp.op_ret, rsp.op_errno,
-                                                       msg);
+                                                       rsp.op_errstr);
                 if (ret)
                         gf_log ("cli", GF_LOG_ERROR,
                                 "Error outputting to xml");
@@ -2011,10 +2012,10 @@ gf_cli_remove_brick_cbk (struct rpc_req *req, struct iovec *iov,
 
         if (rsp.op_ret) {
                 cli_err ("volume remove-brick %s: failed: %s", cmd_str,
-                         msg);
+                         rsp.op_errstr);
         } else {
                 cli_out ("volume remove-brick %s: success", cmd_str);
-                if (GF_OP_CMD_START == cmd && task_id_str != NULL)
+                if (GF_OP_CMD_START == cmd)
                         cli_out ("ID: %s", task_id_str);
         }
 
@@ -6334,10 +6335,10 @@ gf_cli_heal_volume_cbk (struct rpc_req *req, struct iovec *iov,
 
         if ((heal_op == GF_AFR_OP_HEAL_FULL) ||
             (heal_op == GF_AFR_OP_HEAL_INDEX)) {
-                operation = "Launching heal operation";
+                operation = "Launching Heal operation";
                 substr = "\nUse heal info commands to check status";
         } else {
-                operation = "Gathering heal info";
+                operation = "Gathering Heal info";
                 substr = "";
         }
 

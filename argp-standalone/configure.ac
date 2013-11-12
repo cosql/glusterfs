@@ -96,10 +96,7 @@ if test x$GCC = xyes ; then
  -Waggregate-return \
  -Wpointer-arith -Wbad-function-cast -Wnested-externs"
 fi
-# Set -std=gnu89 if clang is used
-if test x$CC = xclang ; then
- CFLAGS="-std=gnu89 $CFLAGS"
-fi
+
 CPPFLAGS="$CPPFLAGS -I$srcdir"
 
 AC_OUTPUT(Makefile)

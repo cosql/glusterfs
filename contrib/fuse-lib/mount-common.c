@@ -246,17 +246,10 @@ fuse_mnt_umount (const char *progname, const char *abs_mnt,
         if (res == 0) {
                 sigprocmask (SIG_SETMASK, &oldmask, NULL);
                 setuid (geteuid ());
-#ifndef __FreeBSD__
-                execl ("/bin/umount", "/bin/umount", "-i", rel_mnt,
-                      lazy ? "-l" : NULL, NULL);
-                GFFUSE_LOGERR ("%s: failed to execute /bin/umount: %s",
-                               progname, strerror (errno));
-#else
-				execl ("/sbin/umount", "/sbin/umount", rel_mnt,
+                execl ("/bin/umount", "/sbin/umount", "-i", rel_mnt,
                       lazy ? "-l" : NULL, NULL);
                 GFFUSE_LOGERR ("%s: failed to execute /sbin/umount: %s",
                                progname, strerror (errno));
-#endif /* __FreeBSD__ */
                 exit (1);
         }
         res = waitpid (res, &status, 0);

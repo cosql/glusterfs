@@ -55,5 +55,3 @@ BACKEND_GID=`stat --printf=%g $B0/${V0}1/dir`;
 
 
 EXPECT "0" uid_gid_compare $NEW_UID $NEW_GID $BACKEND_UID $BACKEND_GID
-
-cleanup;

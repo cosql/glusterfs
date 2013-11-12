@@ -100,7 +100,7 @@ sh_loop_driver_done (call_frame_t *sh_frame, xlator_t *this,
         }
 
         sh_private_cleanup (sh_frame, this);
-        if (is_self_heal_failed (sh, AFR_CHECK_SPECIFIC)) {
+        if (is_self_heal_failed (sh)) {
                 GF_ASSERT (!last_loop_frame);
                 //loop_finish should have happened and the old_loop should be NULL
                 gf_log (this->name, GF_LOG_DEBUG,
@@ -143,7 +143,7 @@ sh_loop_finish (call_frame_t *loop_frame, xlator_t *this)
         }
 
         if (loop_sh && loop_sh->data_lock_held) {
-                afr_sh_data_unlock (loop_frame, this, this->name,
+                afr_sh_data_unlock (loop_frame, this,
                                     sh_destroy_frame);
         } else {
                 sh_destroy_frame (loop_frame, this);
@@ -214,7 +214,7 @@ sh_loop_frame_create (call_frame_t *sh_frame, xlator_t *this,
                 goto out;
         //We want the frame to have same lk_owner as sh_frame
         //so that locks translator allows conflicting locks
-        new_loop_local = afr_self_heal_local_init (local, this);
+        new_loop_local = afr_local_copy (local, this);
         if (!new_loop_local)
                 goto out;
         new_loop_frame->local = new_loop_local;
@@ -273,10 +273,10 @@ sh_loop_start (call_frame_t *sh_frame, xlator_t *this, off_t offset,
         new_loop_sh->offset = offset;
         new_loop_sh->block_size = sh->block_size;
         afr_sh_data_lock (new_loop_frame, this, offset, new_loop_sh->block_size,
-                          _gf_true, this->name, sh_loop_lock_success, sh_loop_lock_failure);
+                          _gf_true, sh_loop_lock_success, sh_loop_lock_failure);
         return 0;
 out:
-        afr_set_self_heal_status (sh, AFR_SELF_HEAL_FAILED);
+        sh->afr_set_self_heal_status (sh, AFR_SELF_HEAL_FAILED);
         if (old_loop_frame)
                 sh_loop_finish (old_loop_frame, this);
         sh_loop_return (sh_frame, this, new_loop_frame, -1, ENOMEM);
@@ -307,9 +307,8 @@ sh_loop_driver (call_frame_t *sh_frame, xlator_t *this,
                         sh_priv->loops_running--;
                 offset = sh_priv->offset;
                 block_size = sh->block_size;
-                while ((!sh->eof_reached) &&
-                       (!is_self_heal_failed (sh, AFR_CHECK_SPECIFIC)) &&
-                     (sh_priv->loops_running < priv->data_self_heal_window_size)
+                while ((!sh->eof_reached) && (!is_self_heal_failed (sh)) &&
+                       (sh_priv->loops_running < priv->data_self_heal_window_size)
                        && (sh_priv->offset < sh->file_size)) {
 
                         loop++;
@@ -328,8 +327,7 @@ sh_loop_driver (call_frame_t *sh_frame, xlator_t *this,
         if (0 == loop) {
                 //loop finish does unlock, but the erasing of the pending
                 //xattrs needs to happen before that so do not finish the loop
-                if (is_driver_done &&
-                    !is_self_heal_failed (sh, AFR_CHECK_SPECIFIC))
+                if (is_driver_done && !is_self_heal_failed (sh))
                         goto driver_done;
                 if (old_loop_frame) {
                         sh_loop_finish (old_loop_frame, this);
@@ -340,7 +338,7 @@ sh_loop_driver (call_frame_t *sh_frame, xlator_t *this,
         //If we have more loops to form we should finish previous loop after
         //the next loop lock
         while (loop--) {
-                if (is_self_heal_failed (sh, AFR_CHECK_SPECIFIC)) {
+                if (is_self_heal_failed (sh)) {
                         // op failed in other loop, stop spawning more loops
                         if (old_loop_frame) {
                                 sh_loop_finish (old_loop_frame, this);
@@ -386,7 +384,7 @@ sh_loop_return (call_frame_t *sh_frame, xlator_t *this, call_frame_t *loop_frame
         }
 
         if (op_ret == -1) {
-                afr_set_self_heal_status (sh, AFR_SELF_HEAL_FAILED);
+                sh->afr_set_self_heal_status (sh, AFR_SELF_HEAL_FAILED);
                 afr_sh_set_error (sh, op_errno);
                 if (loop_frame) {
                         sh_loop_finish (loop_frame, this);
@@ -434,7 +432,7 @@ sh_loop_write_cbk (call_frame_t *loop_frame, void *cookie, xlator_t *this,
                         priv->children[child_index]->name,
                         strerror (op_errno));
 
-                afr_set_self_heal_status (sh, AFR_SELF_HEAL_FAILED);
+                sh->afr_set_self_heal_status (sh, AFR_SELF_HEAL_FAILED);
                 afr_sh_set_error (loop_sh, op_errno);
         } else if (op_ret < loop_local->cont.writev.vector->iov_len) {
                 gf_log (this->name, GF_LOG_ERROR,
@@ -442,7 +440,7 @@ sh_loop_write_cbk (call_frame_t *loop_frame, void *cookie, xlator_t *this,
                         "(expected %lu, returned %d)", sh_local->loc.path,
                         priv->children[child_index]->name,
                         loop_local->cont.writev.vector->iov_len, op_ret);
-                afr_set_self_heal_status (sh, AFR_SELF_HEAL_FAILED);
+                sh->afr_set_self_heal_status (sh, AFR_SELF_HEAL_FAILED);
         }
 
         call_count = afr_frame_return (loop_frame);
@@ -516,7 +514,7 @@ sh_loop_read_cbk (call_frame_t *loop_frame, void *cookie,
 
         if (op_ret <= 0) {
                 if (op_ret < 0) {
-                        afr_set_self_heal_status (sh, AFR_SELF_HEAL_FAILED);
+                        sh->afr_set_self_heal_status (sh, AFR_SELF_HEAL_FAILED);
                         gf_log (this->name, GF_LOG_ERROR, "read failed on %d "
                                 "for %s reason :%s", sh->source,
                                 sh_local->loc.path, strerror (errno));
@@ -626,7 +624,7 @@ sh_diff_checksum_cbk (call_frame_t *loop_frame, void *cookie, xlator_t *this,
                         "checksum on %s failed on subvolume %s (%s)",
                         sh_local->loc.path, priv->children[child_index]->name,
                         strerror (op_errno));
-                afr_set_self_heal_status (sh, AFR_SELF_HEAL_FAILED);
+                sh->afr_set_self_heal_status (sh, AFR_SELF_HEAL_FAILED);
         } else {
                 memcpy (loop_sh->checksum + child_index * MD5_DIGEST_LENGTH,
                         strong_checksum, MD5_DIGEST_LENGTH);
@@ -664,8 +662,7 @@ sh_diff_checksum_cbk (call_frame_t *loop_frame, void *cookie, xlator_t *this,
                 }
                 UNLOCK (&sh_priv->lock);
 
-                if (write_needed &&
-                    !is_self_heal_failed (sh, AFR_CHECK_SPECIFIC)) {
+                if (write_needed && !is_self_heal_failed (sh)) {
                         sh_loop_read (loop_frame, this);
                 } else {
                         sh_loop_return (sh_frame, this, loop_frame,
@@ -754,15 +751,14 @@ out:
         return sh_priv;
 }
 
-int
-afr_sh_transfer_lock (call_frame_t *dst, call_frame_t *src, char *dom,
+void
+afr_sh_transfer_lock (call_frame_t *dst, call_frame_t *src,
                       unsigned int child_count)
 {
         afr_local_t             *dst_local   = NULL;
         afr_self_heal_t         *dst_sh      = NULL;
         afr_local_t             *src_local   = NULL;
         afr_self_heal_t         *src_sh      = NULL;
-        int                     ret          = -1;
 
         dst_local = dst->local;
         dst_sh = &dst_local->self_heal;
@@ -770,12 +766,9 @@ afr_sh_transfer_lock (call_frame_t *dst, call_frame_t *src, char *dom,
         src_sh = &src_local->self_heal;
         GF_ASSERT (src_sh->data_lock_held);
         GF_ASSERT (!dst_sh->data_lock_held);
-        ret = afr_lk_transfer_datalock (dst, src, dom, child_count);
-        if (ret)
-                return ret;
+        afr_lk_transfer_datalock (dst, src, child_count);
         src_sh->data_lock_held = _gf_false;
         dst_sh->data_lock_held = _gf_true;
-        return 0;
 }
 
 int
@@ -797,10 +790,7 @@ afr_sh_start_loops (call_frame_t *sh_frame, xlator_t *this,
         ret = sh_loop_frame_create (sh_frame, this, NULL, &first_loop_frame);
         if (ret)
                 goto out;
-        ret = afr_sh_transfer_lock (first_loop_frame, sh_frame, this->name,
-                                    priv->child_count);
-        if (ret)
-                goto out;
+        afr_sh_transfer_lock (first_loop_frame, sh_frame, priv->child_count);
         sh->private = afr_sh_priv_init ();
         if (!sh->private) {
                 ret = -1;
@@ -810,7 +800,7 @@ afr_sh_start_loops (call_frame_t *sh_frame, xlator_t *this,
         ret = 0;
 out:
         if (ret) {
-                afr_set_self_heal_status (sh, AFR_SELF_HEAL_FAILED);
+                sh->afr_set_self_heal_status (sh, AFR_SELF_HEAL_FAILED);
                 sh_loop_driver_done (sh_frame, this, NULL);
         }
         return 0;

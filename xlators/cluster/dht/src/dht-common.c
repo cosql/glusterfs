@@ -63,11 +63,6 @@ dht_aggregate (dict_t *this, char *key, data_t *value, void *data)
                 }
 
                 *size = hton64 (ntoh64 (*size) + ntoh64 (*ptr));
-
-        } else if (fnmatch (GF_XATTR_STIME_PATTERN, key, FNM_NOESCAPE) == 0) {
-                ret = gf_get_min_stime (THIS, dst, key, value);
-                if (ret < 0)
-                        return ret;
         } else {
                 /* compare user xattrs only */
                 if (!strncmp (key, "user.", strlen ("user."))) {
@@ -209,16 +204,9 @@ dht_discover_complete (xlator_t *this, call_frame_t *discover_frame)
                         goto out;
                 }
                 if (ret != 0) {
-                        gf_log (this->name, GF_LOG_WARNING,
+                        gf_log (this->name, GF_LOG_DEBUG,
                                 "normalizing failed on %s "
                                 "(overlaps/holes present)", local->loc.path);
-                        /* We may need to do the lookup again */
-                        /* in discover call, parent is not know, and basename
-                         * of entry is also not available. Without which we
-                         * cannot build a layout correctly to heal it. Hence
-                         * returning ESTALE */
-                        op_errno = ESTALE;
-                        goto out;
                 }
 
                 if (local->inode)
@@ -1437,6 +1425,7 @@ dht_lookup (call_frame_t *frame, xlator_t *this,
         VALIDATE_OR_GOTO (this, err);
         VALIDATE_OR_GOTO (loc, err);
         VALIDATE_OR_GOTO (loc->inode, err);
+        VALIDATE_OR_GOTO (loc->path, err);
 
         conf = this->private;
         if (!conf)
@@ -1657,8 +1646,7 @@ dht_unlink_linkfile_cbk (call_frame_t *frame, void *cookie, xlator_t *this,
 
         LOCK (&frame->lock);
         {
-                if ((op_ret == -1) && !((op_errno == ENOENT) ||
-                                        (op_errno == ENOTCONN))) {
+                if ((op_ret == -1) && (op_errno != ENOENT)) {
                         local->op_errno = op_errno;
                         gf_log (this->name, GF_LOG_DEBUG,
                                 "subvolume %s returned -1 (%s)",
@@ -1810,7 +1798,6 @@ dht_vgetxattr_alloc_and_fill (dht_local_t *local, dict_t *xattr, xlator_t *this,
                 }
 
                 (void) strcat (local->xattr_val, value);
-                (void) strcat (local->xattr_val, " ");
                 local->op_ret = 0;
         }
 
@@ -1834,8 +1821,6 @@ dht_vgetxattr_fill_and_set (dht_local_t *local, dict_t **dict, xlator_t *this,
         *dict = dict_new ();
         if (!*dict)
                 goto out;
-
-        local->xattr_val[strlen (local->xattr_val) - 1] = '\0';
 
         /* we would need max this many bytes to create xattr string
          * extra 40 bytes is just an estimated amount of additional
@@ -2144,6 +2129,7 @@ dht_getxattr (call_frame_t *frame, xlator_t *this,
         VALIDATE_OR_GOTO (this, err);
         VALIDATE_OR_GOTO (loc, err);
         VALIDATE_OR_GOTO (loc->inode, err);
+        VALIDATE_OR_GOTO (loc->path, err);
         VALIDATE_OR_GOTO (this->private, err);
 
         conf   = this->private;
@@ -2188,9 +2174,8 @@ dht_getxattr (call_frame_t *frame, xlator_t *this,
          * NOTE: Don't trust inode here, as that may not be valid
          *       (until inode_link() happens)
          */
-        if (key && DHT_IS_DIR(layout) &&
-            ((strcmp (key, GF_XATTR_PATHINFO_KEY) == 0)
-             || (strcmp (key, GF_XATTR_NODE_UUID_KEY) == 0))) {
+        if (key && (strcmp (key, GF_XATTR_PATHINFO_KEY) == 0)
+            && DHT_IS_DIR(layout)) {
                 (void) strncpy (local->xsel, key, 256);
                 cnt = local->call_cnt = layout->cnt;
                 for (i = 0; i < cnt; i++) {
@@ -2261,8 +2246,7 @@ dht_getxattr (call_frame_t *frame, xlator_t *this,
                 if (cluster_getmarkerattr (frame, this, loc, key,
                                            local, dht_getxattr_unwind,
                                            sub_volumes, cnt,
-                                           MARKER_UUID_TYPE, marker_uuid_default_gauge,
-                                           conf->vol_uuid)) {
+                                           MARKER_UUID_TYPE, conf->vol_uuid)) {
                         op_errno = EINVAL;
                         goto err;
                 }
@@ -2286,7 +2270,6 @@ dht_getxattr (call_frame_t *frame, xlator_t *this,
                                                    local, dht_getxattr_unwind,
                                                    sub_volumes, cnt,
                                                    MARKER_XTIME_TYPE,
-                                                   marker_xtime_default_gauge,
                                                    conf->vol_uuid)) {
                                 op_errno = EINVAL;
                                 goto err;
@@ -2502,6 +2485,7 @@ dht_setxattr (call_frame_t *frame, xlator_t *this,
         VALIDATE_OR_GOTO (this, err);
         VALIDATE_OR_GOTO (loc, err);
         VALIDATE_OR_GOTO (loc->inode, err);
+        VALIDATE_OR_GOTO (loc->path, err);
 
         conf   = this->private;
 
@@ -2715,6 +2699,7 @@ dht_removexattr (call_frame_t *frame, xlator_t *this,
         VALIDATE_OR_GOTO (frame, err);
         VALIDATE_OR_GOTO (loc, err);
         VALIDATE_OR_GOTO (loc->inode, err);
+        VALIDATE_OR_GOTO (loc->path, err);
 
         local = dht_local_init (frame, loc, NULL, GF_FOP_REMOVEXATTR);
         if (!local) {
@@ -2946,6 +2931,7 @@ dht_statfs (call_frame_t *frame, xlator_t *this, loc_t *loc, dict_t *xdata)
         VALIDATE_OR_GOTO (this, err);
         VALIDATE_OR_GOTO (loc, err);
         VALIDATE_OR_GOTO (loc->inode, err);
+        VALIDATE_OR_GOTO (loc->path, err);
         VALIDATE_OR_GOTO (this->private, err);
 
         conf = this->private;
@@ -3582,9 +3568,7 @@ dht_mknod (call_frame_t *frame, xlator_t *this,
                                    subvol, subvol->fops->mknod, loc, mode,
                                    rdev, umask, params);
         } else {
-
-                avail_subvol = dht_free_disk_available_subvol (this, subvol,
-                                                               local);
+                avail_subvol = dht_free_disk_available_subvol (this, subvol);
                 if (avail_subvol != subvol) {
                         /* Choose the minimum filled volume, and create the
                            files there */
@@ -4005,7 +3989,7 @@ dht_create (call_frame_t *frame, xlator_t *this,
         }
         /* Choose the minimum filled volume, and create the
            files there */
-        avail_subvol = dht_free_disk_available_subvol (this, subvol, local);
+        avail_subvol = dht_free_disk_available_subvol (this, subvol);
         if (avail_subvol != subvol) {
                 local->params = dict_ref (params);
                 local->flags = flags;
@@ -4881,6 +4865,7 @@ dht_entrylk (call_frame_t *frame, xlator_t *this,
         VALIDATE_OR_GOTO (this, err);
         VALIDATE_OR_GOTO (loc, err);
         VALIDATE_OR_GOTO (loc->inode, err);
+        VALIDATE_OR_GOTO (loc->path, err);
 
         local = dht_local_init (frame, loc, NULL, GF_FOP_ENTRYLK);
         if (!local) {

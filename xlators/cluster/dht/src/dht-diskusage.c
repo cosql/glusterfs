@@ -251,45 +251,25 @@ dht_is_subvol_filled (xlator_t *this, xlator_t *subvol)
 
 /*Get the best subvolume to create the file in*/
 xlator_t *
-dht_free_disk_available_subvol (xlator_t *this, xlator_t *subvol,
-                                dht_local_t *local)
+dht_free_disk_available_subvol (xlator_t *this, xlator_t *subvol)
 {
 	xlator_t   *avail_subvol = NULL;
 	dht_conf_t *conf = NULL;
-        dht_layout_t *layout = NULL;
-        loc_t      *loc = NULL;
 
 	conf = this->private;
-        if (!local)
-                goto out;
-        loc = &local->loc;
-        if (!local->layout) {
-                layout = dht_layout_get (this, loc->parent);
 
-                if (!layout) {
-                        gf_log (this->name, GF_LOG_DEBUG,
-                                "layout missing path=%s parent=%s",
-                                loc->path, uuid_utoa (loc->parent->gfid));
-                        goto out;
-                }
-        } else {
-                layout = dht_layout_ref (this, local->layout);
-        }
-
-        LOCK (&conf->subvolume_lock);
+	LOCK (&conf->subvolume_lock);
 	{
-                avail_subvol = dht_subvol_with_free_space_inodes(this, subvol,
-                                                                 layout);
+                avail_subvol = dht_subvol_with_free_space_inodes(this, subvol);
                 if(!avail_subvol)
                 {
                         avail_subvol = dht_subvol_maxspace_nonzeroinode(this,
-                                                                        subvol,
-                                                                        layout);
+                                                                        subvol);
                 }
 
 	}
 	UNLOCK (&conf->subvolume_lock);
-out:
+
 	if (!avail_subvol) {
 		gf_log (this->name,
                         GF_LOG_DEBUG,
@@ -298,42 +278,17 @@ out:
                 avail_subvol = subvol;
 	}
 
-        if (layout)
-                dht_layout_unref (this, layout);
+
 	return avail_subvol;
-}
-
-static inline
-int32_t dht_subvol_has_err (xlator_t *this, dht_layout_t *layout)
-{
-        int ret = -1;
-        int i   = 0;
-
-        if (!this || !layout)
-                goto out;
-
-        /* check if subvol has layout errors, before selecting it */
-        for (i = 0; i < layout->cnt; i++) {
-                if (!strcmp (layout->list[i].xlator->name, this->name) &&
-                     (layout->list[i].err != 0)) {
-                        ret = -1;
-                        goto out;
-                }
-        }
-        ret = 0;
-out:
-        return ret;
 }
 
 /*Get subvolume which has both space and inodes more than the min criteria*/
 xlator_t *
-dht_subvol_with_free_space_inodes(xlator_t *this, xlator_t *subvol,
-                                  dht_layout_t *layout)
+dht_subvol_with_free_space_inodes(xlator_t *this, xlator_t *subvol)
 {
         int i = 0;
         double max = 0;
         double max_inodes = 0;
-        int    ignore_subvol = 0;
 
         xlator_t *avail_subvol = NULL;
         dht_conf_t *conf = NULL;
@@ -341,12 +296,6 @@ dht_subvol_with_free_space_inodes(xlator_t *this, xlator_t *subvol,
         conf = this->private;
 
         for(i=0; i < conf->subvolume_cnt; i++) {
-                /* check if subvol has layout errors, before selecting it */
-                ignore_subvol = dht_subvol_has_err (conf->subvolumes[i],
-                                                    layout);
-                if (ignore_subvol)
-                        continue;
-
                 if ((conf->disk_unit == 'p') &&
                     (conf->du_stats[i].avail_percent > conf->min_free_disk) &&
                     (conf->du_stats[i].avail_inodes  > conf->min_free_inodes)) {
@@ -376,12 +325,10 @@ dht_subvol_with_free_space_inodes(xlator_t *this, xlator_t *subvol,
 
 /* Get subvol which has atleast one inode and maximum space */
 xlator_t *
-dht_subvol_maxspace_nonzeroinode (xlator_t *this, xlator_t *subvol,
-                                  dht_layout_t *layout)
+dht_subvol_maxspace_nonzeroinode (xlator_t *this, xlator_t *subvol)
 {
         int         i = 0;
         double      max = 0;
-        int         ignore_subvol = 0;
 
         xlator_t   *avail_subvol = NULL;
         dht_conf_t *conf = NULL;
@@ -389,12 +336,6 @@ dht_subvol_maxspace_nonzeroinode (xlator_t *this, xlator_t *subvol,
         conf = this->private;
 
         for (i = 0; i < conf->subvolume_cnt; i++) {
-                /* check if subvol has layout errors, before selecting it */
-                ignore_subvol = dht_subvol_has_err (conf->subvolumes[i],
-                                                    layout);
-                if (ignore_subvol)
-                        continue;
-
                 if (conf->disk_unit == 'p') {
                         if ((conf->du_stats[i].avail_percent > max)
                             && (conf->du_stats[i].avail_inodes > 0 )) {

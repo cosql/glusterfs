@@ -1,9 +1,7 @@
 EXTRA_DIST = autogen.sh \
 	COPYING-GPLV2 COPYING-LGPLV3 \
 	INSTALL README AUTHORS THANKS NEWS \
-	glusterfs.spec glusterfs-api.pc.in \
-	error-codes.json gf-error-codes.h.template \
-	gen-headers.py
+	glusterfs.spec glusterfs-api.pc.in
 
 SUBDIRS = argp-standalone libglusterfs rpc api xlators glusterfsd \
 	$(FUSERMOUNT_SUBDIR) doc extras cli
