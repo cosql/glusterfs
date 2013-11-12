@@ -568,14 +568,11 @@ initialize_inodelk_variables (call_frame_t *frame, xlator_t *this)
         inodelk = afr_get_inodelk (int_lock, int_lock->domain);
 
         inodelk->lock_count    = 0;
-        int_lock->lk_attempted_count = 0;
         int_lock->lock_op_ret   = -1;
         int_lock->lock_op_errno = 0;
 
         memset (inodelk->locked_nodes, 0,
                 sizeof (*inodelk->locked_nodes) * priv->child_count);
-        memset (int_lock->locked_nodes, 0,
-                sizeof (*int_lock->locked_nodes) * priv->child_count);
 
         return 0;
 }
@@ -658,7 +655,6 @@ afr_unlock_inodelk_cbk (call_frame_t *frame, void *cookie, xlator_t *this,
         afr_internal_lock_t *int_lock = NULL;
         afr_inodelk_t       *inodelk = NULL;
         int32_t             child_index = (long)cookie;
-        afr_private_t       *priv = NULL;
 
         local = frame->local;
         int_lock = &local->internal_lock;
@@ -667,12 +663,9 @@ afr_unlock_inodelk_cbk (call_frame_t *frame, void *cookie, xlator_t *this,
                                AFR_UNLOCK_OP, NULL, op_ret,
                                op_errno, child_index);
 
-        priv = this->private;
-
         if (op_ret < 0 && op_errno != ENOTCONN && op_errno != EBADFD) {
-                gf_log (this->name, GF_LOG_INFO, "%s: unlock failed on subvolume %s "
-                        "with lock owner %s", local->loc.path,
-                        priv->children[child_index]->name,
+                gf_log (this->name, GF_LOG_INFO, "%s: unlock failed on %d "
+                        "unlock by %s", local->loc.path, child_index,
                         lkowner_utoa (&frame->root->lk_owner));
         }
 
@@ -1336,7 +1329,6 @@ afr_nonblocking_entrylk (call_frame_t *frame, xlator_t *this)
                         local->op_errno         = EINVAL;
                         int_lock->lock_op_errno = EINVAL;
 
-			afr_unlock (frame, this);
                         return -1;
                 }
 
@@ -1532,7 +1524,6 @@ afr_nonblocking_inodelk (call_frame_t *frame, xlator_t *this)
                         local->op_errno         = EINVAL;
                         int_lock->lock_op_errno = EINVAL;
 
-			afr_unlock (frame, this);
                         ret = -1;
                         goto out;
                 }

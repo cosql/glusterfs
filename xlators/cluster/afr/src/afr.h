@@ -28,7 +28,6 @@
 #define AFR_XATTR_PREFIX "trusted.afr"
 #define AFR_PATHINFO_HEADER "REPLICATE:"
 #define AFR_SH_READDIR_SIZE_KEY "self-heal-readdir-size"
-#define AFR_SH_DATA_DOMAIN_FMT "%s:self-heal"
 
 #define AFR_LOCKEE_COUNT_MAX    3
 #define AFR_DOM_COUNT_MAX    3
@@ -88,30 +87,26 @@ typedef struct afr_inode_ctx_ {
         int32_t  *fresh_children;//increasing order of latency
         afr_spb_state_t mdata_spb;
         afr_spb_state_t data_spb;
-        uint32_t        open_fd_count;
 } afr_inode_ctx_t;
 
 typedef enum {
         NONE,
         INDEX,
-        INDEX_TO_BE_HEALED,
         FULL,
 } afr_crawl_type_t;
 
 typedef struct afr_self_heald_ {
-        gf_boolean_t            enabled;
-        gf_boolean_t            iamshd;
-        afr_crawl_type_t        *pending;
-        gf_boolean_t            *inprogress;
-        afr_child_pos_t         *pos;
-        gf_timer_t              **timer;
-        eh_t                    *healed;
-        eh_t                    *heal_failed;
-        eh_t                    *split_brain;
-        eh_t                    **statistics;
-        void                    **crawl_events;
-        char                    *node_uuid;
-        int                     timeout;
+        gf_boolean_t     enabled;
+        gf_boolean_t     iamshd;
+        afr_crawl_type_t *pending;
+        gf_boolean_t     *inprogress;
+        afr_child_pos_t  *pos;
+        gf_timer_t       **timer;
+        eh_t             *healed;
+        eh_t             *heal_failed;
+        eh_t             *split_brain;
+        char             *node_uuid;
+        int              timeout;
 } afr_self_heald_t;
 
 typedef struct _afr_private {
@@ -184,7 +179,6 @@ typedef enum {
         AFR_SELF_HEAL_NOT_ATTEMPTED,
         AFR_SELF_HEAL_STARTED,
         AFR_SELF_HEAL_FAILED,
-        AFR_SELF_HEAL_SYNC_BEGIN,
 } afr_self_heal_status;
 
 typedef struct {
@@ -297,9 +291,6 @@ struct afr_self_heal_ {
         unsigned char *write_needed;
         uint8_t *checksum;
         afr_post_remove_call_t post_remove_call;
-
-        char    *data_sh_info;
-        char    *metadata_sh_info;
 
         loc_t parent_loc;
         call_frame_t *orig_frame;
@@ -453,8 +444,6 @@ typedef struct _afr_local {
         unsigned int call_count;
         unsigned int success_count;
         unsigned int enoent_count;
-        uint32_t     open_fd_count;
-        gf_boolean_t update_open_fd_count;
 
 
         unsigned int unhealable;
@@ -497,23 +486,15 @@ typedef struct _afr_local {
         int      optimistic_change_log;
 	gf_boolean_t      delayed_post_op;
 
-
 	/* Is the current writev() going to perform a stable write?
 	   i.e, is fd->flags or @flags writev param have O_SYNC or
 	   O_DSYNC?
 	*/
-        gf_boolean_t      stable_write;
+	gf_boolean_t      stable_write;
 
-        /* This write appended to the file. Nnot necessarily O_APPEND,
-           just means the offset of write was at the end of file.
-        */
-        gf_boolean_t      append_write;
-
-        int allow_sh_for_running_transaction;
-
-
-        /* This struct contains the arguments for the "continuation"
-           (scheme-like) of fops
+        /*
+          This struct contains the arguments for the "continuation"
+          (scheme-like) of fops
         */
 
         int   op;
@@ -609,9 +590,7 @@ typedef struct _afr_local {
                 struct {
                         struct iatt prebuf;
                         struct iatt postbuf;
-                } inode_wfop; //common structure for all inode-write-fops
 
-                struct {
                         int32_t op_ret;
 
                         struct iovec *vector;
@@ -622,21 +601,34 @@ typedef struct _afr_local {
                 } writev;
 
                 struct {
+                        struct iatt prebuf;
+                        struct iatt postbuf;
+                } fsync;
+
+                struct {
                         off_t offset;
+                        struct iatt prebuf;
+                        struct iatt postbuf;
                 } truncate;
 
                 struct {
                         off_t offset;
+                        struct iatt prebuf;
+                        struct iatt postbuf;
                 } ftruncate;
 
                 struct {
                         struct iatt in_buf;
                         int32_t valid;
+                        struct iatt preop_buf;
+                        struct iatt postop_buf;
                 } setattr;
 
                 struct {
                         struct iatt in_buf;
                         int32_t valid;
+                        struct iatt preop_buf;
+                        struct iatt postop_buf;
                 } fsetattr;
 
                 struct {
@@ -703,11 +695,15 @@ typedef struct _afr_local {
 			int32_t mode;
 			off_t offset;
 			size_t len;
+			struct iatt prebuf;
+			struct iatt postbuf;
 		} fallocate;
 
 		struct {
 			off_t offset;
 			size_t len;
+			struct iatt prebuf;
+			struct iatt postbuf;
 		} discard;
 
         } cont;
@@ -1162,27 +1158,6 @@ afr_xattr_array_destroy (dict_t **xattr, unsigned int child_count);
 } while (0);
 
 
-#define AFR_SBRAIN_MSG "Failed on %s as split-brain is seen. Returning EIO."
-
-#define AFR_SBRAIN_CHECK_FD(fd, label) do {                              \
-        if (fd->inode && afr_is_split_brain (this, fd->inode)) {        \
-                op_errno = EIO;                                         \
-                gf_log (this->name, GF_LOG_WARNING,                     \
-                        AFR_SBRAIN_MSG ,uuid_utoa (fd->inode->gfid));   \
-                goto label;                                             \
-        }                                                               \
-} while (0)
-
-#define AFR_SBRAIN_CHECK_LOC(loc, label) do {                           \
-        if (loc->inode && afr_is_split_brain (this, loc->inode)) {      \
-                op_errno = EIO;                                         \
-                loc_path (loc, NULL);                                   \
-                gf_log (this->name, GF_LOG_WARNING,                     \
-                        AFR_SBRAIN_MSG , loc->path);                    \
-                goto label;                                             \
-        }                                                               \
-} while (0)
-
 int
 afr_fd_report_unstable_write (xlator_t *this, fd_t *fd);
 
@@ -1194,11 +1169,5 @@ afr_delayed_changelog_wake_resume (xlator_t *this, fd_t *fd, call_stub_t *stub);
 
 int
 afr_inodelk_init (afr_inodelk_t *lk, char *dom, size_t child_count);
-
-void
-afr_handle_open_fd_count (call_frame_t *frame, xlator_t *this);
-
-afr_inode_ctx_t*
-afr_inode_ctx_get (inode_t *inode, xlator_t *this);
 
 #endif /* __AFR_H__ */

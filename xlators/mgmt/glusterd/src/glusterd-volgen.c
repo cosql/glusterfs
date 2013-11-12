@@ -1422,7 +1422,6 @@ server_graph_builder (volgen_graph_t *graph, glusterd_volinfo_t *volinfo,
         char     *vgname                  = NULL;
         char     *vg                      = NULL;
         glusterd_brickinfo_t *brickinfo   = NULL;
-        char changelog_basepath[PATH_MAX] = {0,};
 
         brickinfo = param;
         path      = brickinfo->path;
@@ -1482,25 +1481,6 @@ server_graph_builder (volgen_graph_t *graph, glusterd_volinfo_t *volinfo,
                 if (ret)
                         return -1;
         }
-
-        xl = volgen_graph_add (graph, "features/changelog", volname);
-        if (!xl)
-                return -1;
-
-        ret = xlator_set_option (xl, "changelog-brick", path);
-        if (ret)
-                return -1;
-
-        snprintf (changelog_basepath, sizeof (changelog_basepath),
-                  "%s/%s", path, ".glusterfs/changelogs");
-        ret = xlator_set_option (xl, "changelog-dir", changelog_basepath);
-        if (ret)
-                return -1;
-
-        ret = check_and_add_debug_xl (graph, set_dict, volname, "changelog");
-        if (ret)
-                return -1;
-
         xl = volgen_graph_add (graph, "features/access-control", volname);
         if (!xl)
                 return -1;
@@ -1696,11 +1676,16 @@ static int
 perfxl_option_handler (volgen_graph_t *graph, struct volopt_map_entry *vme,
                        void *param)
 {
+        char *volname = NULL;
         gf_boolean_t enabled = _gf_false;
-        glusterd_volinfo_t *volinfo = NULL;
+        xlator_t *this = NULL;
+        glusterd_conf_t *conf = NULL;
 
-        GF_ASSERT (param);
-        volinfo = param;
+        this = THIS;
+        GF_ASSERT (this);
+        conf = this->private;
+
+        volname = param;
 
         if (strcmp (vme->option, "!perf") != 0)
                 return 0;
@@ -1713,10 +1698,10 @@ perfxl_option_handler (volgen_graph_t *graph, struct volopt_map_entry *vme,
         /* Check op-version before adding the 'open-behind' xlator in the graph
          */
         if (!strcmp (vme->key, "performance.open-behind") &&
-            (vme->op_version > volinfo->client_op_version))
+            (vme->op_version > conf->op_version))
                 return 0;
 
-        if (volgen_graph_add (graph, vme->voltype, volinfo->volname))
+        if (volgen_graph_add (graph, vme->voltype, volname))
                 return 0;
         else
                 return -1;
@@ -2316,33 +2301,22 @@ volgen_graph_build_dht_cluster (volgen_graph_t *graph,
         int                     ret                      = -1;
         char                    *decommissioned_children = NULL;
         xlator_t                *dht                     = NULL;
-        char                    *voltype                 = "cluster/distribute";
+        char                    *optstr                  = NULL;
+        gf_boolean_t             use_nufa                = _gf_false;
 
-        /* NUFA and Switch section */
-        if (dict_get_str_boolean (volinfo->dict, "cluster.nufa", 0) &&
-            dict_get_str_boolean (volinfo->dict, "cluster.switch", 0)) {
-                gf_log (THIS->name, GF_LOG_ERROR,
-                        "nufa and switch cannot be set together");
-                ret = -1;
-                goto out;
+        if (dict_get_str(volinfo->dict,"cluster.nufa",&optstr) == 0) {
+                /* Keep static analyzers quiet by "using" the value. */
+                ret = gf_string2boolean(optstr,&use_nufa);
         }
 
-        /* Check for NUFA volume option, and change the voltype */
-        if (dict_get_str_boolean (volinfo->dict, "cluster.nufa", 0))
-                voltype = "cluster/nufa";
-
-        /* Check for switch volume option, and change the voltype */
-        if (dict_get_str_boolean (volinfo->dict, "cluster.switch", 0))
-                voltype = "cluster/switch";
-
         clusters = volgen_graph_build_clusters (graph,  volinfo,
-                                                voltype,
+                                                use_nufa
+                                                        ? "cluster/nufa"
+                                                        : "cluster/distribute",
                                                 "%s-dht",
-                                                child_count,
-                                                child_count);
+                                                child_count, child_count);
         if (clusters < 0)
                 goto out;
-
         dht = first_of (graph);
         ret = _graph_get_decommissioned_children (dht, volinfo,
                                                   &decommissioned_children);
@@ -2436,7 +2410,7 @@ build_distribute:
 
         ret = volgen_graph_build_dht_cluster (graph, volinfo,
                                               dist_count);
-        if (ret == -1)
+        if (ret)
                 goto out;
 
         ret = 0;
@@ -2459,7 +2433,7 @@ client_graph_builder (volgen_graph_t *graph, glusterd_volinfo_t *volinfo,
                 goto out;
 
         ret = volume_volgen_graph_build_clusters (graph, volinfo);
-        if (ret == -1)
+        if (ret)
                 goto out;
 
         ret = glusterd_volinfo_get_boolean (volinfo, VKEY_FEATURES_QUOTA);
@@ -2474,24 +2448,11 @@ client_graph_builder (volgen_graph_t *graph, glusterd_volinfo_t *volinfo,
                 }
         }
 
-
-        ret = glusterd_volinfo_get_boolean (volinfo, "features.file-snapshot");
-        if (ret == -1)
-                goto out;
-        if (ret) {
-                xl = volgen_graph_add (graph, "features/qemu-block", volname);
-
-                if (!xl) {
-                        ret = -1;
-                        goto out;
-                }
-        }
-
         /* Logic to make sure NFS doesn't have performance translators by
            default for a volume */
         tmp_data = dict_get (set_dict, "nfs-volume-file");
         if (!tmp_data)
-                ret = volgen_graph_set_options_generic (graph, set_dict, volinfo,
+                ret = volgen_graph_set_options_generic (graph, set_dict, volname,
                                                         &perfxl_option_handler);
         else
                 ret = volgen_graph_set_options_generic (graph, set_dict, volname,
@@ -3228,7 +3189,7 @@ enumerate_transport_reqs (gf_transport_type type, char **types)
         }
 }
 
-int
+static int
 generate_client_volfiles (glusterd_volinfo_t *volinfo,
                           glusterd_client_type_t client_type)
 {

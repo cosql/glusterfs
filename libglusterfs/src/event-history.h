@@ -32,8 +32,7 @@ eh_dump (eh_t *event , void *data,
          int (fn) (circular_buffer_t *buffer, void *data));
 
 eh_t *
-eh_new (size_t buffer_size, gf_boolean_t use_buffer_once,
-        void (*destroy_data) (void *data));
+eh_new (size_t buffer_size, gf_boolean_t use_buffer_once);
 
 int
 eh_save_history (eh_t *history, void *string);

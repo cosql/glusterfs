@@ -92,14 +92,10 @@ void *
 nsm_thread (void *argv)
 {
 	register SVCXPRT *transp;
-        int ret = 0;
 
-        ret = pmap_unset (NLMCBK_PROGRAM, NLMCBK_V1);
-        if (ret == 0) {
-                gf_log (GF_NLM, GF_LOG_ERROR, "pmap_unset failed");
-                return NULL;
-        }
-        transp = svcudp_create(RPC_ANYSOCK);
+	pmap_unset (NLMCBK_PROGRAM, NLMCBK_V1);
+
+	transp = svcudp_create(RPC_ANYSOCK);
 	if (transp == NULL) {
 		gf_log (GF_NLM, GF_LOG_ERROR, "cannot create udp service.");
                 return NULL;

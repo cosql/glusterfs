@@ -365,11 +365,8 @@ cli_cmd_submit (void *req, call_frame_t *frame,
         int             ret = -1;
         unsigned        timeout = 0;
 
-        if ((GLUSTER_CLI_PROFILE_VOLUME == procnum) ||
-            (GLUSTER_CLI_HEAL_VOLUME == procnum))
-                timeout = CLI_TEN_MINUTES_TIMEOUT;
-        else
-                timeout = CLI_DEFAULT_CMD_TIMEOUT;
+        timeout = (GLUSTER_CLI_PROFILE_VOLUME == procnum) ?
+                   CLI_TOP_CMD_TIMEOUT : CLI_DEFAULT_CMD_TIMEOUT;
 
         cli_cmd_lock ();
         cmd_sent = 0;

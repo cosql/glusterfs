@@ -15,160 +15,6 @@
 
 #include "syncop.h"
 
-int
-syncopctx_setfsuid (void *uid)
-{
-	struct syncopctx *opctx = NULL;
-	int               ret = 0;
-
-	/* In args check */
-	if (!uid) {
-		ret = -1;
-		errno = EINVAL;
-		goto out;
-	}
-
-	opctx = syncopctx_getctx ();
-
-	/* alloc for this thread the first time */
-	if (!opctx) {
-		opctx = GF_CALLOC (1, sizeof (*opctx), gf_common_mt_syncopctx);
-		if (!opctx) {
-			ret = -1;
-			goto out;
-		}
-
-		ret = syncopctx_setctx (opctx);
-		if (ret != 0) {
-			GF_FREE (opctx);
-			opctx = NULL;
-			goto out;
-		}
-	}
-
-out:
-	if (opctx && uid) {
-		opctx->uid = *(uid_t *)uid;
-		opctx->valid |= SYNCOPCTX_UID;
-	}
-
-	return ret;
-}
-
-int
-syncopctx_setfsgid (void *gid)
-{
-	struct syncopctx *opctx = NULL;
-	int               ret = 0;
-
-	/* In args check */
-	if (!gid) {
-		ret = -1;
-		errno = EINVAL;
-		goto out;
-	}
-
-	opctx = syncopctx_getctx ();
-
-	/* alloc for this thread the first time */
-	if (!opctx) {
-		opctx = GF_CALLOC (1, sizeof (*opctx), gf_common_mt_syncopctx);
-		if (!opctx) {
-			ret = -1;
-			goto out;
-		}
-
-		ret = syncopctx_setctx (opctx);
-		if (ret != 0) {
-			GF_FREE (opctx);
-			opctx = NULL;
-			goto out;
-		}
-	}
-
-out:
-	if (opctx && gid) {
-		opctx->gid = *(gid_t *)gid;
-		opctx->valid |= SYNCOPCTX_GID;
-	}
-
-	return ret;
-}
-
-int
-syncopctx_setfsgroups (int count, const void *groups)
-{
-	struct syncopctx *opctx = NULL;
-	gid_t            *tmpgroups = NULL;
-	int               ret = 0;
-
-	/* In args check */
-	if (count != 0 && !groups) {
-		ret = -1;
-		errno = EINVAL;
-		goto out;
-	}
-
-	opctx = syncopctx_getctx ();
-
-	/* alloc for this thread the first time */
-	if (!opctx) {
-		opctx = GF_CALLOC (1, sizeof (*opctx), gf_common_mt_syncopctx);
-		if (!opctx) {
-			ret = -1;
-			goto out;
-		}
-
-		ret = syncopctx_setctx (opctx);
-		if (ret != 0) {
-			GF_FREE (opctx);
-			opctx = NULL;
-			goto out;
-		}
-	}
-
-	/* resize internal groups as required */
-	if (count && opctx->grpsize < count) {
-		if (opctx->groups) {
-			tmpgroups = GF_REALLOC (opctx->groups,
-						(sizeof (gid_t) * count));
-			/* NOTE: Not really required to zero the reallocation,
-			 * as ngrps controls the validity of data,
-			 * making a note irrespective */
-			if (tmpgroups == NULL) {
-				opctx->grpsize = 0;
-				GF_FREE (opctx->groups);
-				opctx->groups = NULL;
-				ret = -1;
-				goto out;
-			}
-		}
-		else {
-			tmpgroups = GF_CALLOC (count, sizeof (gid_t),
-					       gf_common_mt_syncopctx);
-			if (tmpgroups == NULL) {
-				opctx->grpsize = 0;
-				ret = -1;
-				goto out;
-			}
-		}
-
-		opctx->groups = tmpgroups;
-		opctx->grpsize = count;
-	}
-
-	/* copy out the groups passed */
-	if (count)
-		memcpy (opctx->groups, groups, (sizeof (gid_t) * count));
-
-	/* set/reset the ngrps, this is where reset of groups is handled */
-	opctx->ngrps = count;
-	opctx->valid |= SYNCOPCTX_GROUPS;
-
-out:
-	return ret;
-}
-
 static void
 __run (struct synctask *task)
 {
@@ -182,7 +28,7 @@ __run (struct synctask *task)
         case SYNCTASK_SUSPEND:
                 break;
         case SYNCTASK_RUN:
-                gf_log (task->xl->name, GF_LOG_DEBUG,
+                gf_log (task->xl->name, GF_LOG_WARNING,
                         "re-running already running task");
                 env->runcount--;
                 break;
@@ -192,11 +38,7 @@ __run (struct synctask *task)
         case SYNCTASK_DONE:
                 gf_log (task->xl->name, GF_LOG_WARNING,
                         "running completed task");
-		return;
-	case SYNCTASK_ZOMBIE:
-		gf_log (task->xl->name, GF_LOG_WARNING,
-			"attempted to wake up zombie!!");
-		return;
+                break;
         }
 
         list_add_tail (&task->all_tasks, &env->runq);
@@ -228,11 +70,7 @@ __wait (struct synctask *task)
         case SYNCTASK_DONE:
                 gf_log (task->xl->name, GF_LOG_WARNING,
                         "running completed task");
-                return;
-	case SYNCTASK_ZOMBIE:
-		gf_log (task->xl->name, GF_LOG_WARNING,
-			"attempted to sleep a zombie!!");
-		return;
+                break;
         }
 
         list_add_tail (&task->all_tasks, &env->waitq);
@@ -330,7 +168,6 @@ synctask_done (struct synctask *task)
 
         pthread_mutex_lock (&task->mutex);
         {
-		task->state = SYNCTASK_ZOMBIE;
                 task->done = 1;
                 pthread_cond_broadcast (&task->cond);
         }
@@ -354,19 +191,20 @@ synctask_setid (struct synctask *task, uid_t uid, gid_t gid)
 }
 
 
-struct synctask *
-synctask_create (struct syncenv *env, synctask_fn_t fn, synctask_cbk_t cbk,
-		 call_frame_t *frame, void *opaque)
+int
+synctask_new (struct syncenv *env, synctask_fn_t fn, synctask_cbk_t cbk,
+              call_frame_t *frame, void *opaque)
 {
         struct synctask *newtask = NULL;
         xlator_t        *this    = THIS;
+        int              ret     = 0;
 
         VALIDATE_OR_GOTO (env, err);
         VALIDATE_OR_GOTO (fn, err);
 
         newtask = CALLOC (1, sizeof (*newtask));
         if (!newtask)
-                return NULL;
+                return -ENOMEM;
 
         newtask->frame      = frame;
         if (!frame) {
@@ -425,7 +263,21 @@ synctask_create (struct syncenv *env, synctask_fn_t fn, synctask_cbk_t cbk,
          */
         syncenv_scale(env);
 
-	return newtask;
+        if (!cbk) {
+                pthread_mutex_lock (&newtask->mutex);
+                {
+                        while (!newtask->done) {
+                                pthread_cond_wait (&newtask->cond, &newtask->mutex);
+                        }
+                }
+                pthread_mutex_unlock (&newtask->mutex);
+
+                ret = newtask->ret;
+
+                synctask_destroy (newtask);
+        }
+
+        return ret;
 err:
         if (newtask) {
                 FREE (newtask->stack);
@@ -433,46 +285,7 @@ err:
                         STACK_DESTROY (newtask->opframe->root);
                 FREE (newtask);
         }
-
-        return NULL;
-}
-
-
-int
-synctask_join (struct synctask *task)
-{
-	int ret = 0;
-
-	pthread_mutex_lock (&task->mutex);
-	{
-		while (!task->done)
-			pthread_cond_wait (&task->cond, &task->mutex);
-	}
-	pthread_mutex_unlock (&task->mutex);
-
-	ret = task->ret;
-
-	synctask_destroy (task);
-
-	return ret;
-}
-
-
-int
-synctask_new (struct syncenv *env, synctask_fn_t fn, synctask_cbk_t cbk,
-              call_frame_t *frame, void *opaque)
-{
-	struct synctask *newtask = NULL;
-	int              ret = 0;
-
-	newtask = synctask_create (env, fn, cbk, frame, opaque);
-	if (!newtask)
-		return -1;
-
-        if (!cbk)
-		ret = synctask_join (newtask);
-
-        return ret;
+        return -1;
 }
 
 
@@ -495,7 +308,7 @@ syncenv_task (struct syncproc *proc)
                         if (!list_empty (&env->runq))
                                 break;
                         if ((ret == ETIMEDOUT) &&
-                            (env->procs > env->procmin)) {
+                            (env->procs > SYNCENV_PROC_MIN)) {
                                 task = NULL;
                                 env->procs--;
                                 memset (proc, 0, sizeof (*proc));
@@ -595,20 +408,20 @@ syncenv_scale (struct syncenv *env)
                         goto unlock;
 
                 scale = env->runcount;
-                if (scale > env->procmax)
-                        scale = env->procmax;
+                if (scale > SYNCENV_PROC_MAX)
+                        scale = SYNCENV_PROC_MAX;
                 if (scale > env->procs)
                         diff = scale - env->procs;
                 while (diff) {
                         diff--;
-                        for (; (i < env->procmax); i++) {
+                        for (; (i < SYNCENV_PROC_MAX); i++) {
                                 if (env->proc[i].processor == 0)
                                         break;
                         }
 
                         env->proc[i].env = env;
-                        ret = gf_thread_create (&env->proc[i].processor, NULL,
-						syncenv_processor, &env->proc[i]);
+                        ret = pthread_create (&env->proc[i].processor, NULL,
+                                              syncenv_processor, &env->proc[i]);
                         if (ret)
                                 break;
                         env->procs++;
@@ -628,19 +441,11 @@ syncenv_destroy (struct syncenv *env)
 
 
 struct syncenv *
-syncenv_new (size_t stacksize, int procmin, int procmax)
+syncenv_new (size_t stacksize)
 {
         struct syncenv *newenv = NULL;
         int             ret = 0;
         int             i = 0;
-
-	if (!procmin || procmin < 0)
-		procmin = SYNCENV_PROC_MIN;
-	if (!procmax || procmax > SYNCENV_PROC_MAX)
-		procmax = SYNCENV_PROC_MAX;
-
-	if (procmin > procmax)
-		return NULL;
 
         newenv = CALLOC (1, sizeof (*newenv));
 
@@ -656,13 +461,11 @@ syncenv_new (size_t stacksize, int procmin, int procmax)
         newenv->stacksize    = SYNCENV_DEFAULT_STACKSIZE;
         if (stacksize)
                 newenv->stacksize = stacksize;
-	newenv->procmin = procmin;
-	newenv->procmax = procmax;
 
-        for (i = 0; i < newenv->procmin; i++) {
+        for (i = 0; i < SYNCENV_PROC_MIN; i++) {
                 newenv->proc[i].env = newenv;
-                ret = gf_thread_create (&newenv->proc[i].processor, NULL,
-					syncenv_processor, &newenv->proc[i]);
+                ret = pthread_create (&newenv->proc[i].processor, NULL,
+                                      syncenv_processor, &newenv->proc[i]);
                 if (ret)
                         break;
                 newenv->procs++;

@@ -379,6 +379,13 @@ struct volopt_map_entry glusterd_volopt_map[] = {
           .op_version = 1,
           .flags      = OPT_FLAG_CLIENT_OPT
         },
+        { .key        = "cluster.nufa",
+          .voltype    = "cluster/distribute",
+          .option     = "!nufa",
+          .type       = NO_DOC,
+          .op_version = 2,
+          .flags      = OPT_FLAG_CLIENT_OPT
+        },
         { .key        = "cluster.rsync-hash-regex",
           .voltype    = "cluster/distribute",
           .type       = NO_DOC,
@@ -394,38 +401,6 @@ struct volopt_map_entry glusterd_volopt_map[] = {
         { .key        = "cluster.dht-xattr-name",
           .voltype    = "cluster/distribute",
           .option     = "xattr-name",
-          .type       = NO_DOC,
-          .op_version = 3,
-          .flags      = OPT_FLAG_CLIENT_OPT
-        },
-
-        /* NUFA xlator options (Distribute special case) */
-        { .key        = "cluster.nufa",
-          .voltype    = "cluster/distribute",
-          .option     = "!nufa",
-          .type       = NO_DOC,
-          .op_version = 2,
-          .flags      = OPT_FLAG_CLIENT_OPT
-        },
-        { .key        = "cluster.local-volume-name",
-          .voltype    = "cluster/nufa",
-          .option     = "local-volume-name",
-          .type       = NO_DOC,
-          .op_version = 3,
-          .flags      = OPT_FLAG_CLIENT_OPT
-        },
-
-        /* Switch xlator options (Distribute special case) */
-        { .key        = "cluster.switch",
-          .voltype    = "cluster/distribute",
-          .option     = "!switch",
-          .type       = NO_DOC,
-          .op_version = 3,
-          .flags      = OPT_FLAG_CLIENT_OPT
-        },
-        { .key        = "cluster.switch-pattern",
-          .voltype    = "cluster/switch",
-          .option     = "pattern.switch.case",
           .type       = NO_DOC,
           .op_version = 3,
           .flags      = OPT_FLAG_CLIENT_OPT
@@ -845,15 +820,6 @@ struct volopt_map_entry glusterd_volopt_map[] = {
           .description = "enable/disable read-ahead translator in the volume.",
           .flags       = OPT_FLAG_CLIENT_OPT | OPT_FLAG_XLATOR_OPT
         },
-        { .key         = "performance.readdir-ahead",
-          .voltype     = "performance/readdir-ahead",
-          .option      = "!perf",
-          .value       = "off",
-          .op_version  = 3,
-          .description = "enable/disable readdir-ahead translator in the volume.",
-          .flags       = OPT_FLAG_CLIENT_OPT | OPT_FLAG_XLATOR_OPT
-        },
-
         { .key         = "performance.io-cache",
           .voltype     = "performance/io-cache",
           .option      = "!perf",
@@ -953,17 +919,6 @@ struct volopt_map_entry glusterd_volopt_map[] = {
           .flags      = OPT_FLAG_CLIENT_OPT
         },
 
-	/* Feature translators */
-        { .key         = "features.file-snapshot",
-          .voltype     = "features/qemu-block",
-          .option      = "!feat",
-          .value       = "off",
-          .op_version  = 3,
-          .description = "enable/disable file-snapshot feature in the "
-                         "volume.",
-          .flags       = OPT_FLAG_CLIENT_OPT | OPT_FLAG_XLATOR_OPT
-        },
-
         /* Quota xlator options */
         { .key        = VKEY_FEATURES_LIMIT_USAGE,
           .voltype    = "features/quota",
@@ -1006,22 +961,6 @@ struct volopt_map_entry glusterd_volopt_map[] = {
           .type        = NO_DOC,
           .flags       = OPT_FLAG_FORCE,
           .op_version  = 1
-        },
-        { .key         = VKEY_MARKER_XTIME_FORCE,
-          .voltype     = "features/marker",
-          .option      = "gsync-force-xtime",
-          .value       = "off",
-          .type        = NO_DOC,
-          .flags       = OPT_FLAG_FORCE,
-          .op_version  = 2
-        },
-        { .key         = VKEY_MARKER_XTIME_FORCE,
-          .voltype     = "features/marker",
-          .option      = "!gsync-force-xtime",
-          .value       = "off",
-          .type        = NO_DOC,
-          .flags       = OPT_FLAG_FORCE,
-          .op_version  = 2
         },
         { .key         = VKEY_FEATURES_QUOTA,
           .voltype     = "features/marker",
@@ -1224,12 +1163,6 @@ struct volopt_map_entry glusterd_volopt_map[] = {
           .type        = GLOBAL_DOC,
           .op_version  = 1
         },
-        { .key         = "nfs.mount-rmtab",
-          .voltype     = "nfs/server",
-          .option      = "nfs.mount-rmtab",
-          .type        = GLOBAL_DOC,
-          .op_version  = 1
-        },
         { .key         = "nfs.server-aux-gids",
           .voltype     = "nfs/server",
           .option      = "nfs.server-aux-gids",
@@ -1245,24 +1178,6 @@ struct volopt_map_entry glusterd_volopt_map[] = {
         { .key         = "nfs.drc-size",
           .voltype     = "nfs/server",
           .option      = "nfs.drc-size",
-          .type        = GLOBAL_DOC,
-          .op_version  = 3
-        },
-        { .key         = "nfs.read-size",
-          .voltype     = "nfs/server",
-          .option      = "nfs3.read-size",
-          .type        = GLOBAL_DOC,
-          .op_version  = 3
-        },
-        { .key         = "nfs.write-size",
-          .voltype     = "nfs/server",
-          .option      = "nfs3.write-size",
-          .type        = GLOBAL_DOC,
-          .op_version  = 3
-        },
-        { .key         = "nfs.readdir-size",
-          .voltype     = "nfs/server",
-          .option      = "nfs3.readdir-size",
           .type        = GLOBAL_DOC,
           .op_version  = 3
         },
@@ -1285,14 +1200,6 @@ struct volopt_map_entry glusterd_volopt_map[] = {
         { .key         = "storage.linux-aio",
           .voltype     = "storage/posix",
           .op_version  = 1
-        },
-        { .key         = "storage.batch-fsync-mode",
-          .voltype     = "storage/posix",
-          .op_version  = 3
-        },
-        { .key         = "storage.batch-fsync-delay-usec",
-          .voltype     = "storage/posix",
-          .op_version  = 3
         },
         { .key         = "storage.owner-uid",
           .voltype     = "storage/posix",
@@ -1331,32 +1238,6 @@ struct volopt_map_entry glusterd_volopt_map[] = {
         { .key         = GLUSTERD_QUORUM_RATIO_KEY,
           .voltype     = "mgmt/glusterd",
           .value       = "0",
-          .op_version  = 2
-        },
-        /* changelog translator - global tunables */
-        { .key         = "changelog.changelog",
-          .voltype     = "features/changelog",
-          .type        = NO_DOC,
-          .op_version  = 2
-        },
-        { .key         = "changelog.changelog-dir",
-          .voltype     = "features/changelog",
-          .type        = NO_DOC,
-          .op_version  = 2
-        },
-        { .key         = "changelog.encoding",
-          .voltype     = "features/changelog",
-          .type        = NO_DOC,
-          .op_version  = 2
-        },
-        { .key         = "changelog.rollover-time",
-          .voltype     = "features/changelog",
-          .type        = NO_DOC,
-          .op_version  = 2
-        },
-        { .key         = "changelog.fsync-interval",
-          .voltype     = "features/changelog",
-          .type        = NO_DOC,
           .op_version  = 2
         },
         { .key         = NULL

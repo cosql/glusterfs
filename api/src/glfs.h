@@ -176,9 +176,7 @@ int glfs_set_volfile_server (glfs_t *fs, const char *transport,
   @fs: The 'virtual mount' object to be configured with the logging parameters.
 
   @logfile: The logfile to be used for logging. Will be created if it does not
-            already exist (provided system permissions allow). If NULL, a new
-            logfile will be created in default log directory associated with
-            the glusterfs installation.
+            already exist (provided system permissions allow.)
 
   @loglevel: Numerical value specifying the degree of verbosity. Higher the
              value, more verbose the logging.
@@ -220,36 +218,6 @@ int glfs_set_logging (glfs_t *fs, const char *logfile, int loglevel);
 int glfs_init (glfs_t *fs);
 
 
-/*
-  SYNOPSIS
-
-  glfs_fini: Cleanup and destroy the 'virtual mount'
-
-  DESCRIPTION
-
-  This function attempts to gracefully destroy glfs_t object. An attempt is
-  made to wait for all background processing to complete before returning.
-
-  glfs_fini() must be called after all operations on glfs_t is finished.
-
-  IMPORTANT
-
-  IT IS NECESSARY TO CALL glfs_fini() ON ALL THE INITIALIZED glfs_t
-  OBJECTS BEFORE TERMINATING THE PROGRAM. THERE MAY BE CACHED AND
-  UNWRITTEN / INCOMPLETE OPERATIONS STILL IN PROGRESS EVEN THOUGH THE
-  API CALLS HAVE RETURNED. glfs_fini() WILL WAIT FOR BACKGROUND OPERATIONS
-  TO COMPLETE BEFORE RETURNING, THEREBY MAKING IT SAFE FOR THE PROGRAM TO
-  EXIT.
-
-  PARAMETERS
-
-  @fs: The 'virtual mount' object to be destroyed.
-
-  RETURN VALUES
-
-   0 : Success.
-*/
-
 int glfs_fini (glfs_t *fs);
 
 /*
@@ -271,32 +239,6 @@ int glfs_fini (glfs_t *fs);
 struct glfs_fd;
 typedef struct glfs_fd glfs_fd_t;
 
-/*
- * PER THREAD IDENTITY MODIFIERS
- *
- * The following operations enable to set a per thread identity context
- * for the glfs APIs to perform operations as. The calls here are kept as close
- * to POSIX equivalents as possible.
- *
- * NOTES:
- *
- *  - setgroups is a per thread setting, hence this is named as fsgroups to be
- *    close in naming to the fs(u/g)id APIs
- *  - Typical mode of operation is to set the IDs as required, with the
- *    supplementary groups being optionally set, make the glfs call and post the
- *    glfs operation set them back to eu/gid or uid/gid as appropriate to the
- *    caller
- *  - The groups once set, need to be unset by setting the size to 0 (in which
- *    case the list argument is a do not care)
- *  - Once a process for a thread of operation choses to set the IDs, all glfs
- *    calls made from that thread would default to the IDs set for the thread.
- *    As a result use these APIs with care and ensure that the set IDs are
- *    reverted to global process defaults as required.
- *
- */
-int glfs_setfsuid (uid_t fsuid);
-int glfs_setfsgid (gid_t fsgid);
-int glfs_setfsgroups (size_t size, const gid_t *list);
 
 /*
   SYNOPSIS
@@ -361,29 +303,6 @@ glfs_t *glfs_from_glfd (glfs_fd_t *fd);
 
 int glfs_set_xlator_option (glfs_t *fs, const char *xlator, const char *key,
 			    const char *value);
-
-/*
-
-  glfs_io_cbk
-
-  The following is the function type definition of the callback
-  function pointer which has to be provided by the caller to the
-  *_async() versions of the IO calls.
-
-  The callback function is called on completion of the requested
-  IO, and the appropriate return value is returned in @ret.
-
-  In case of an error in completing the IO, @ret will be -1 and
-  @errno will be set with the appropriate error.
-
-  @ret will be same as the return value of the non _async() variant
-  of the particular call
-
-  @data is the same context pointer provided by the caller at the
-  time of issuing the async IO call. This can be used by the
-  caller to differentiate different instances of the async requests
-  in a common callback function.
-*/
 
 typedef void (*glfs_io_cbk) (glfs_fd_t *fd, ssize_t ret, void *data);
 

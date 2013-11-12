@@ -712,7 +712,7 @@ cli_is_key_spl (char *key)
 
 #define GLUSTERD_DEFAULT_WORKDIR "/var/lib/glusterd"
 static int
-cli_add_key_group (dict_t *dict, char *key, char *value, char **op_errstr)
+cli_add_key_group (dict_t *dict, char *key, char *value)
 {
         int             ret = -1;
         int             opt_count = 0;
@@ -726,7 +726,6 @@ cli_add_key_group (dict_t *dict, char *key, char *value, char **op_errstr)
         char            *tagpath = NULL;
         char            *buf = NULL;
         char            line[PATH_MAX + 256] = {0,};
-        char            errstr[2048] = "";
         FILE            *fp = NULL;
 
         ret = gf_asprintf (&tagpath, "%s/groups/%s",
@@ -739,10 +738,6 @@ cli_add_key_group (dict_t *dict, char *key, char *value, char **op_errstr)
         fp = fopen (tagpath, "r");
         if (!fp) {
                 ret = -1;
-                snprintf(errstr, sizeof(errstr), "Unable to open file '%s'."
-                         " Error: %s", tagpath, strerror (errno));
-                if (op_errstr)
-                        *op_errstr = gf_strdup(errstr);
                 goto out;
         }
 
@@ -755,10 +750,6 @@ cli_add_key_group (dict_t *dict, char *key, char *value, char **op_errstr)
                 tok_val = strtok_r (NULL, "=", &saveptr);
                 if (!tok_key || !tok_val) {
                         ret = -1;
-                        snprintf(errstr, sizeof(errstr), "'%s' file format "
-                                 "not valid.", tagpath);
-                        if (op_errstr)
-                                *op_errstr = gf_strdup(errstr);
                         goto out;
                 }
 
@@ -780,10 +771,6 @@ cli_add_key_group (dict_t *dict, char *key, char *value, char **op_errstr)
 
         if (!opt_count) {
                 ret = -1;
-                snprintf(errstr, sizeof(errstr), "'%s' file format "
-                         "not valid.", tagpath);
-                if (op_errstr)
-                        *op_errstr = gf_strdup(errstr);
                 goto out;
         }
         ret = dict_set_int32 (dict, "count", opt_count);
@@ -804,8 +791,7 @@ out:
 #undef GLUSTERD_DEFAULT_WORKDIR
 
 int32_t
-cli_cmd_volume_set_parse (const char **words, int wordcount, dict_t **options,
-                          char **op_errstr)
+cli_cmd_volume_set_parse (const char **words, int wordcount, dict_t **options)
 {
         dict_t                  *dict = NULL;
         char                    *volname = NULL;
@@ -863,7 +849,7 @@ cli_cmd_volume_set_parse (const char **words, int wordcount, dict_t **options,
                         goto out;
                 }
 
-                ret = cli_add_key_group (dict, key, value, op_errstr);
+                ret = cli_add_key_group (dict, key, value);
                 if (ret == 0)
                         *options = dict;
                 goto out;
@@ -1609,161 +1595,22 @@ gsyncd_glob_check (const char *w)
         return !!strpbrk (w, "*?[");
 }
 
-static int
-config_parse (const char **words, int wordcount, dict_t *dict,
-              unsigned cmdi, unsigned glob)
-{
-        int32_t            ret     = -1;
-        int32_t            i       = -1;
-        char               *append_str = NULL;
-        size_t             append_len = 0;
-        char               *subop = NULL;
-
-        switch ((wordcount - 1) - cmdi) {
-        case 0:
-                subop = gf_strdup ("get-all");
-                break;
-        case 1:
-                if (words[cmdi + 1][0] == '!') {
-                        (words[cmdi + 1])++;
-                        if (gf_asprintf (&subop, "del%s",
-                                         glob ? "-glob" : "") == -1)
-                                subop = NULL;
-                } else
-                        subop = gf_strdup ("get");
-
-                ret = dict_set_str (dict, "op_name", ((char *)words[cmdi + 1]));
-                if (ret < 0)
-                        goto out;
-                break;
-        default:
-                if (gf_asprintf (&subop, "set%s", glob ? "-glob" : "") == -1)
-                        subop = NULL;
-
-                ret = dict_set_str (dict, "op_name", ((char *)words[cmdi + 1]));
-                if (ret < 0)
-                        goto out;
-
-                /* join the varargs by spaces to get the op_value */
-
-                for (i = cmdi + 2; i < wordcount; i++)
-                        append_len += (strlen (words[i]) + 1);
-                /* trailing strcat will add two bytes, make space for that */
-                append_len++;
-
-                append_str = GF_CALLOC (1, append_len, cli_mt_append_str);
-                if (!append_str) {
-                        ret = -1;
-                        goto out;
-                }
-
-                for (i = cmdi + 2; i < wordcount; i++) {
-                        strcat (append_str, words[i]);
-                        strcat (append_str, " ");
-                }
-                append_str[append_len - 2] = '\0';
-                /* "checkpoint now" is special: we resolve that "now" */
-                if (strcmp (words[cmdi + 1], "checkpoint") == 0 &&
-                    strcmp (append_str, "now") == 0) {
-                        struct timeval tv = {0,};
-
-                        ret = gettimeofday (&tv, NULL);
-                        if (ret == -1)
-                                goto out; /* FIXME: free append_str? */
-
-                        GF_FREE (append_str);
-                        append_str = GF_CALLOC (1, 300, cli_mt_append_str);
-                        if (!append_str) {
-                                ret = -1;
-                                goto out;
-                        }
-                        strcpy (append_str, "as of ");
-                        gf_time_fmt (append_str + strlen ("as of "),
-                                     300 - strlen ("as of "),
-                                     tv.tv_sec, gf_timefmt_FT);
-                }
-
-                ret = dict_set_dynstr (dict, "op_value", append_str);
-        }
-
-        ret = -1;
-        if (subop) {
-                ret = dict_set_dynstr (dict, "subop", subop);
-                if (!ret)
-                      subop = NULL;
-        }
-
-out:
-        if (ret && append_str)
-                GF_FREE (append_str);
-
-        GF_FREE (subop);
-
-        gf_log ("cli", GF_LOG_DEBUG, "Returning %d", ret);
-        return ret;
-}
-
-static int32_t
-force_push_pem_parse (const char **words, int wordcount,
-                      dict_t *dict, unsigned *cmdi)
-{
-        int32_t            ret     = 0;
-
-        if (!strcmp ((char *)words[wordcount-1], "force")) {
-                if ((strcmp ((char *)words[wordcount-2], "start")) &&
-                    (strcmp ((char *)words[wordcount-2], "stop")) &&
-                    (strcmp ((char *)words[wordcount-2], "create")) &&
-                    (strcmp ((char *)words[wordcount-2], "push-pem"))) {
-                        ret = -1;
-                        goto out;
-                }
-                ret = dict_set_uint32 (dict, "force",
-                                       _gf_true);
-                if (ret)
-                        goto out;
-                (*cmdi)++;
-
-                if (!strcmp ((char *)words[wordcount-2], "push-pem")) {
-                        if (strcmp ((char *)words[wordcount-3], "create")) {
-                                ret = -1;
-                                goto out;
-                        }
-                        ret = dict_set_int32 (dict, "push_pem", 1);
-                        if (ret)
-                                goto out;
-                        (*cmdi)++;
-                }
-        } else if (!strcmp ((char *)words[wordcount-1], "push-pem")) {
-                if (strcmp ((char *)words[wordcount-2], "create")) {
-                        ret = -1;
-                        goto out;
-                }
-                ret = dict_set_int32 (dict, "push_pem", 1);
-                if (ret)
-                        goto out;
-                (*cmdi)++;
-        }
-
-out:
-        gf_log ("cli", GF_LOG_DEBUG, "Returning %d", ret);
-        return ret;
-}
-
-
 int32_t
 cli_cmd_gsync_set_parse (const char **words, int wordcount, dict_t **options)
 {
         int32_t            ret     = -1;
         dict_t             *dict   = NULL;
         gf1_cli_gsync_set  type    = GF_GSYNC_OPTION_TYPE_NONE;
+        char               *append_str = NULL;
+        size_t             append_len = 0;
+        char               *subop = NULL;
         int                i       = 0;
         unsigned           masteri = 0;
         unsigned           slavei  = 0;
         unsigned           glob    = 0;
         unsigned           cmdi    = 0;
-        char               *opwords[] = { "create", "status", "start", "stop",
-                                          "config", "force", "delete",
-                                          "push-pem", "detail", NULL };
+        char               *opwords[] = { "status", "start", "stop", "config",
+                                          "log-rotate", NULL };
         char               *w = NULL;
 
         GF_ASSERT (words);
@@ -1775,11 +1622,10 @@ cli_cmd_gsync_set_parse (const char **words, int wordcount, dict_t **options)
 
         /* new syntax:
          *
-         * volume geo-replication $m $s create [push-pem] [force]
-         * volume geo-replication [$m [$s]] status [detail]
+         * volume geo-replication [$m [$s]] status
          * volume geo-replication [$m] $s config [[!]$opt [$val]]
-         * volume geo-replication $m $s start|stop [force]
-         * volume geo-replication $m $s delete
+         * volume geo-replication $m $s start|stop
+         * volume geo-replication $m [$s] log-rotate
          */
 
         if (wordcount < 3)
@@ -1810,13 +1656,6 @@ cli_cmd_gsync_set_parse (const char **words, int wordcount, dict_t **options)
                 if (slavei == 3)
                         masteri = 2;
         } else if (i <= 3) {
-                if (!strcmp ((char *)words[wordcount-1], "detail")) {
-                        /* For status detail it is mandatory to provide
-                         * both master and slave */
-                        ret = -1;
-                        goto out;
-                }
-
                 /* no $s, can only be status cmd
                  * (with either a single $m before it or nothing)
                  * -- these conditions imply that i <= 3 after
@@ -1843,12 +1682,7 @@ cli_cmd_gsync_set_parse (const char **words, int wordcount, dict_t **options)
         if (!w)
                 goto out;
 
-        if (strcmp (w, "create") == 0) {
-                type = GF_GSYNC_OPTION_TYPE_CREATE;
-
-                if (!masteri || !slavei)
-                        goto out;
-        } else if (strcmp (w, "status") == 0) {
+        if (strcmp (w, "status") == 0) {
                 type = GF_GSYNC_OPTION_TYPE_STATUS;
 
                 if (slavei && !masteri)
@@ -1868,32 +1702,13 @@ cli_cmd_gsync_set_parse (const char **words, int wordcount, dict_t **options)
 
                 if (!masteri || !slavei)
                         goto out;
-        } else if (strcmp (w, "delete") == 0) {
-                type = GF_GSYNC_OPTION_TYPE_DELETE;
+        } else if (strcmp(w, "log-rotate") == 0) {
+                type = GF_GSYNC_OPTION_TYPE_ROTATE;
 
-                if (!masteri || !slavei)
+                if (slavei && !masteri)
                         goto out;
         } else
                 GF_ASSERT (!"opword mismatch");
-
-        ret = force_push_pem_parse (words, wordcount, dict, &cmdi);
-        if (ret)
-                goto out;
-
-        if (!strcmp ((char *)words[wordcount-1], "detail")) {
-                if (strcmp ((char *)words[wordcount-2], "status")) {
-                        ret = -1;
-                        goto out;
-                }
-                if (!slavei || !masteri) {
-                        ret = -1;
-                        goto out;
-                }
-                ret = dict_set_uint32 (dict, "status-detail", _gf_true);
-                if (ret)
-                        goto out;
-                cmdi++;
-        }
 
         if (type != GF_GSYNC_OPTION_TYPE_CONFIG &&
             (cmdi < wordcount - 1 || glob))
@@ -1903,26 +1718,97 @@ cli_cmd_gsync_set_parse (const char **words, int wordcount, dict_t **options)
 
         ret = 0;
 
-        if (masteri) {
+        if (masteri)
                 ret = dict_set_str (dict, "master", (char *)words[masteri]);
-                if (!ret)
-                        ret = dict_set_str (dict, "volname",
-                                            (char *)words[masteri]);
-        }
         if (!ret && slavei)
                 ret = dict_set_str (dict, "slave", (char *)words[slavei]);
         if (!ret)
                 ret = dict_set_int32 (dict, "type", type);
-        if (!ret && type == GF_GSYNC_OPTION_TYPE_CONFIG)
-                ret = config_parse (words, wordcount, dict, cmdi, glob);
+        if (!ret && type == GF_GSYNC_OPTION_TYPE_CONFIG) {
+                switch ((wordcount - 1) - cmdi) {
+                case 0:
+                        subop = gf_strdup ("get-all");
+                        break;
+                case 1:
+                        if (words[cmdi + 1][0] == '!') {
+                                (words[cmdi + 1])++;
+                                if (gf_asprintf (&subop, "del%s", glob ? "-glob" : "") == -1)
+                                        subop = NULL;
+                        } else
+                                subop = gf_strdup ("get");
+
+                        ret = dict_set_str (dict, "op_name", ((char *)words[cmdi + 1]));
+                        if (ret < 0)
+                                goto out;
+                        break;
+                default:
+                        if (gf_asprintf (&subop, "set%s", glob ? "-glob" : "") == -1)
+                                subop = NULL;
+
+                        ret = dict_set_str (dict, "op_name", ((char *)words[cmdi + 1]));
+                        if (ret < 0)
+                                goto out;
+
+                        /* join the varargs by spaces to get the op_value */
+
+                        for (i = cmdi + 2; i < wordcount; i++)
+                                append_len += (strlen (words[i]) + 1);
+                        /* trailing strcat will add two bytes, make space for that */
+                        append_len++;
+
+                        append_str = GF_CALLOC (1, append_len, cli_mt_append_str);
+                        if (!append_str) {
+                                ret = -1;
+                                goto out;
+                        }
+
+                        for (i = cmdi + 2; i < wordcount; i++) {
+                                strcat (append_str, words[i]);
+                                strcat (append_str, " ");
+                        }
+                        append_str[append_len - 2] = '\0';
+
+                        /* "checkpoint now" is special: we resolve that "now" */
+                        if (strcmp (words[cmdi + 1], "checkpoint") == 0 &&
+                            strcmp (append_str, "now") == 0) {
+                                struct timeval tv = {0,};
+
+                                ret = gettimeofday (&tv, NULL);
+                                if (ret == -1)
+                                         goto out; /* FIXME: free append_str? */
+
+                                GF_FREE (append_str);
+                                append_str = GF_CALLOC (1, 300, cli_mt_append_str);
+                                if (!append_str) {
+                                        ret = -1;
+                                        goto out;
+                                }
+                                strcpy (append_str, "as of ");
+                                gf_time_fmt (append_str + strlen ("as of "),
+                                             300 - strlen ("as of "),
+                                             tv.tv_sec, gf_timefmt_FT);
+                        }
+
+                        ret = dict_set_dynstr (dict, "op_value", append_str);
+                }
+
+                ret = -1;
+                if (subop) {
+                        ret = dict_set_dynstr (dict, "subop", subop);
+                        if (!ret)
+                                subop = NULL;
+                }
+        }
 
 out:
         if (ret) {
                 if (dict)
                         dict_destroy (dict);
+                GF_FREE (append_str);
         } else
                 *options = dict;
 
+        GF_FREE (subop);
 
         return ret;
 }
@@ -2182,7 +2068,7 @@ cli_cmd_get_statusop (const char *arg)
         uint32_t   ret       = GF_CLI_STATUS_NONE;
         char      *w         = NULL;
         char      *opwords[] = {"detail", "mem", "clients", "fd",
-                                "inode", "callpool", "tasks", NULL};
+                                "inode", "callpool", NULL};
         struct {
                 char      *opname;
                 uint32_t   opcode;
@@ -2193,7 +2079,6 @@ cli_cmd_get_statusop (const char *arg)
                 { "fd",       GF_CLI_STATUS_FD       },
                 { "inode",    GF_CLI_STATUS_INODE    },
                 { "callpool", GF_CLI_STATUS_CALLPOOL },
-                { "tasks",    GF_CLI_STATUS_TASKS    },
                 { NULL }
         };
 
@@ -2308,9 +2193,8 @@ cli_cmd_volume_status_parse (const char **words, int wordcount,
 
                 if (!strcmp (words[3], "nfs")) {
                         if (cmd == GF_CLI_STATUS_FD ||
-                            cmd == GF_CLI_STATUS_DETAIL ||
-                            cmd == GF_CLI_STATUS_TASKS) {
-                                cli_err ("Detail/FD/Tasks status not available"
+                            cmd == GF_CLI_STATUS_DETAIL) {
+                                cli_err ("Detail/FD status not available"
                                          " for NFS Servers");
                                 ret = -1;
                                 goto out;
@@ -2319,21 +2203,14 @@ cli_cmd_volume_status_parse (const char **words, int wordcount,
                 } else if (!strcmp (words[3], "shd")){
                         if (cmd == GF_CLI_STATUS_FD ||
                             cmd == GF_CLI_STATUS_CLIENTS ||
-                            cmd == GF_CLI_STATUS_DETAIL ||
-                            cmd == GF_CLI_STATUS_TASKS) {
-                                cli_err ("Detail/FD/Clients/Tasks status not "
+                            cmd == GF_CLI_STATUS_DETAIL) {
+                                cli_err ("Detail/FD/Clients status not "
                                          "available for Self-heal Daemons");
                                 ret = -1;
                                 goto out;
                         }
                         cmd |= GF_CLI_STATUS_SHD;
                 } else {
-                        if (cmd == GF_CLI_STATUS_TASKS) {
-                                cli_err ("Tasks status not available for "
-                                         "bricks");
-                                ret = -1;
-                                goto out;
-                        }
                         cmd |= GF_CLI_STATUS_BRICK;
                         ret = dict_set_str (dict, "brick", (char *)words[3]);
                 }
@@ -2482,103 +2359,12 @@ out:
        return ret;
 }
 
-static int
-extract_hostname_path_from_token (const char *tmp_words, char **hostname,
-                                  char **path)
-{
-        int ret = 0;
-        char *delimiter = NULL;
-        char *tmp_host = NULL;
-        char *host_name = NULL;
-        char *words = NULL;
-
-        *hostname = NULL;
-        *path = NULL;
-
-        words = GF_CALLOC (1, strlen (tmp_words) + 1, gf_common_mt_char);
-        if (!words){
-                ret = -1;
-                goto out;
-        }
-
-        strncpy (words, tmp_words, strlen (tmp_words) + 1);
-
-        if (validate_brick_name (words)) {
-                cli_err ("Wrong brick type: %s, use <HOSTNAME>:"
-                        "<export-dir-abs-path>", words);
-                ret = -1;
-                goto out;
-        } else {
-                delimiter = strrchr (words, ':');
-                ret = gf_canonicalize_path (delimiter + 1);
-                if (ret) {
-                        goto out;
-                } else {
-                        *path = GF_CALLOC (1, strlen (delimiter+1) +1,
-                                           gf_common_mt_char);
-                        if (!*path) {
-                           ret = -1;
-                                goto out;
-
-                        }
-                        strncpy (*path, delimiter +1,
-                                 strlen(delimiter + 1) + 1);
-                }
-        }
-
-        tmp_host = gf_strdup (words);
-        if (!tmp_host) {
-                gf_log ("cli", GF_LOG_ERROR, "Out of memory");
-                ret = -1;
-                goto out;
-        }
-        get_host_name (tmp_host, &host_name);
-        if (!host_name) {
-                ret = -1;
-                gf_log("cli",GF_LOG_ERROR, "Unable to allocate "
-                        "memory");
-                goto out;
-        }
-        if (!(strcmp (host_name, "localhost") &&
-            strcmp (host_name, "127.0.0.1") &&
-            strncmp (host_name, "0.", 2))) {
-                cli_err ("Please provide a valid hostname/ip other "
-                         "than localhost, 127.0.0.1 or loopback "
-                         "address (0.0.0.0 to 0.255.255.255).");
-                ret = -1;
-                goto out;
-        }
-        if (!valid_internet_address (host_name, _gf_false)) {
-                cli_err ("internet address '%s' does not conform to "
-                          "standards", host_name);
-                ret = -1;
-                goto out;
-        }
-
-        *hostname = GF_CALLOC (1, strlen (host_name) + 1,
-                                       gf_common_mt_char);
-        if (!*hostname) {
-                ret = -1;
-                goto out;
-        }
-        strncpy (*hostname, host_name, strlen (host_name) + 1);
-        ret = 0;
-
-out:
-        GF_FREE (words);
-        GF_FREE (tmp_host);
-        return ret;
-}
-
-
 int
 cli_cmd_volume_heal_options_parse (const char **words, int wordcount,
                                    dict_t **options)
 {
         int     ret = 0;
         dict_t  *dict = NULL;
-        char    *hostname = NULL;
-        char    *path = NULL;
 
         dict = dict_new ();
         if (!dict)
@@ -2600,11 +2386,6 @@ cli_cmd_volume_heal_options_parse (const char **words, int wordcount,
                         ret = dict_set_int32 (dict, "heal-op",
                                               GF_AFR_OP_HEAL_FULL);
                         goto done;
-                } else if (!strcmp (words[3], "statistics")) {
-                        ret = dict_set_int32 (dict, "heal-op",
-                                              GF_AFR_OP_STATISTICS);
-                        goto done;
-
                 } else if (!strcmp (words[3], "info")) {
                         ret = dict_set_int32 (dict, "heal-op",
                                               GF_AFR_OP_INDEX_SUMMARY);
@@ -2615,65 +2396,27 @@ cli_cmd_volume_heal_options_parse (const char **words, int wordcount,
                 }
         }
         if (wordcount == 5) {
-                if (strcmp (words[3], "info") &&
-                    strcmp (words[3], "statistics")) {
+                if (strcmp (words[3], "info")) {
                         ret = -1;
                         goto out;
                 }
-
-                if (!strcmp (words[3], "info")) {
-                        if (!strcmp (words[4], "healed")) {
-                                ret = dict_set_int32 (dict, "heal-op",
-                                                      GF_AFR_OP_HEALED_FILES);
-                                goto done;
-                        }
-                        if (!strcmp (words[4], "heal-failed")) {
-                                ret = dict_set_int32 (dict, "heal-op",
-                                                   GF_AFR_OP_HEAL_FAILED_FILES);
-                                goto done;
-                        }
-                        if (!strcmp (words[4], "split-brain")) {
-                                ret = dict_set_int32 (dict, "heal-op",
-                                                   GF_AFR_OP_SPLIT_BRAIN_FILES);
-                                goto done;
-                        }
+                if (!strcmp (words[4], "healed")) {
+                        ret = dict_set_int32 (dict, "heal-op",
+                                              GF_AFR_OP_HEALED_FILES);
+                        goto done;
                 }
-
-                if (!strcmp (words[3], "statistics")) {
-                        if (!strcmp (words[4], "heal-count")) {
-                                ret = dict_set_int32 (dict, "heal-op",
-                                               GF_AFR_OP_STATISTICS_HEAL_COUNT);
-                                goto done;
-                        }
+                if (!strcmp (words[4], "heal-failed")) {
+                        ret = dict_set_int32 (dict, "heal-op",
+                                              GF_AFR_OP_HEAL_FAILED_FILES);
+                        goto done;
+                }
+                if (!strcmp (words[4], "split-brain")) {
+                        ret = dict_set_int32 (dict, "heal-op",
+                                              GF_AFR_OP_SPLIT_BRAIN_FILES);
+                        goto done;
                 }
                 ret = -1;
                 goto out;
-        }
-        if (wordcount == 7) {
-                if (!strcmp (words[3], "statistics")
-                    && !strcmp (words[4], "heal-count")
-                    && !strcmp (words[5], "replica")) {
-
-                        ret = dict_set_int32 (dict, "heal-op",
-                                   GF_AFR_OP_STATISTICS_HEAL_COUNT_PER_REPLICA);
-                        if (ret)
-                                goto out;
-                        ret = extract_hostname_path_from_token (words[6],
-                                                              &hostname, &path);
-                        if (ret)
-                                goto out;
-                        ret = dict_set_dynstr (dict, "per-replica-cmd-hostname",
-                                               hostname);
-                        if (ret)
-                                goto out;
-                        ret = dict_set_dynstr (dict, "per-replica-cmd-path",
-                                               path);
-                        if (ret)
-                                goto out;
-                        else
-                                goto done;
-
-                }
         }
         ret = -1;
         goto out;

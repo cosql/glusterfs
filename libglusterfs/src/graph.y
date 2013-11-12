@@ -18,7 +18,6 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <pthread.h>
 
 #define RELAX_POISONING
 
@@ -38,8 +37,8 @@ static void option_error (void);
 #define YYSTYPE char *
 #define GF_CMD_BUFFER_LEN (8 * GF_UNIT_KB)
 
-int graphyyerror (const char *);
-int graphyylex ();
+int yyerror (const char *);
+int yylex ();
 %}
 
 
@@ -79,11 +78,11 @@ glusterfs_graph_t *construct;
 static void
 type_error (void)
 {
-        extern int graphyylineno;
+        extern int yylineno;
 
         gf_log ("parser", GF_LOG_ERROR,
                 "Volume %s, before line %d: Please specify volume type",
-                curr->name, graphyylineno);
+                curr->name, yylineno);
         return;
 }
 
@@ -91,11 +90,11 @@ type_error (void)
 static void
 sub_error (void)
 {
-        extern int graphyylineno;
+        extern int yylineno;
 
         gf_log ("parser", GF_LOG_ERROR,
                 "Volume %s, before line %d: Please specify subvolumes",
-                curr->name, graphyylineno);
+                curr->name, yylineno);
         return;
 }
 
@@ -103,12 +102,12 @@ sub_error (void)
 static void
 option_error (void)
 {
-        extern int graphyylineno;
+        extern int yylineno;
 
         gf_log ("parser", GF_LOG_ERROR,
                 "Volume %s, before line %d: Please specify "
                 "option <key> <value>",
-                curr->name, graphyylineno);
+                curr->name, yylineno);
         return;
 }
 
@@ -116,7 +115,7 @@ option_error (void)
 static int
 new_volume (char *name)
 {
-        extern int   graphyylineno;
+        extern int   yylineno;
         xlator_t    *trav = NULL;
         int          ret = 0;
 
@@ -130,7 +129,7 @@ new_volume (char *name)
         if (curr) {
                 gf_log ("parser", GF_LOG_ERROR,
                         "new volume (%s) defintion in line %d unexpected",
-                        name, graphyylineno);
+                        name, yylineno);
                 ret = -1;
                 goto out;
         }
@@ -150,7 +149,7 @@ new_volume (char *name)
                 if (!strcmp (name, trav->name)) {
                         gf_log ("parser", GF_LOG_ERROR,
 				"Line %d: volume '%s' defined again",
-                                graphyylineno, name);
+                                yylineno, name);
                         ret = -1;
                         goto out;
                 }
@@ -195,7 +194,7 @@ out:
 static int
 volume_type (char *type)
 {
-        extern int   graphyylineno;
+        extern int   yylineno;
         int32_t      ret = 0;
 
         if (!type) {
@@ -209,7 +208,7 @@ volume_type (char *type)
                 gf_log ("parser", GF_LOG_ERROR,
                         "Volume '%s', line %d: type '%s' is not valid or "
 			"not found on this machine",
-                        curr->name, graphyylineno, type);
+                        curr->name, yylineno, type);
                 ret = -1;
                 goto out;
         }
@@ -226,7 +225,7 @@ out:
 static int
 volume_option (char *key, char *value)
 {
-        extern int  graphyylineno;
+        extern int  yylineno;
         int         ret = 0;
         char       *set_value = NULL;
 
@@ -243,7 +242,7 @@ volume_option (char *key, char *value)
                 gf_log ("parser", GF_LOG_ERROR,
                         "Volume '%s', line %d: duplicate entry "
 			"('option %s') present",
-                        curr->name, graphyylineno, key);
+                        curr->name, yylineno, key);
                 ret = -1;
                 goto out;
         }
@@ -262,7 +261,7 @@ out:
 static int
 volume_sub (char *sub)
 {
-        extern int       graphyylineno;
+        extern int       yylineno;
         xlator_t        *trav = NULL;
         int              ret = 0;
 
@@ -284,7 +283,7 @@ volume_sub (char *sub)
                 gf_log ("parser", GF_LOG_ERROR,
                         "Volume '%s', line %d: subvolume '%s' is not defined "
 			"prior to usage",
-                        curr->name, graphyylineno, sub);
+                        curr->name, yylineno, sub);
                 ret = -1;
                 goto out;
         }
@@ -292,7 +291,7 @@ volume_sub (char *sub)
         if (trav == curr) {
                 gf_log ("parser", GF_LOG_ERROR,
                         "Volume '%s', line %d: has '%s' itself as subvolume",
-                        curr->name, graphyylineno, sub);
+                        curr->name, yylineno, sub);
                 ret = -1;
                 goto out;
         }
@@ -329,46 +328,46 @@ volume_end (void)
 
 
 int
-graphyywrap ()
+yywrap ()
 {
         return 1;
 }
 
 
 int
-graphyyerror (const char *str)
+yyerror (const char *str)
 {
-        extern char  *graphyytext;
-        extern int    graphyylineno;
+        extern char  *yytext;
+        extern int    yylineno;
 
-        if (curr && curr->name && graphyytext) {
-                if (!strcmp (graphyytext, "volume")) {
+        if (curr && curr->name && yytext) {
+                if (!strcmp (yytext, "volume")) {
                         gf_log ("parser", GF_LOG_ERROR,
                                 "'end-volume' not defined for volume '%s'",
 				curr->name);
-                } else if (!strcmp (graphyytext, "type")) {
+                } else if (!strcmp (yytext, "type")) {
                         gf_log ("parser", GF_LOG_ERROR,
                                 "line %d: duplicate 'type' defined for "
 				"volume '%s'",
-                                graphyylineno, curr->name);
-                } else if (!strcmp (graphyytext, "subvolumes")) {
+                                yylineno, curr->name);
+                } else if (!strcmp (yytext, "subvolumes")) {
                         gf_log ("parser", GF_LOG_ERROR,
                                 "line %d: duplicate 'subvolumes' defined for "
 				"volume '%s'",
-                                graphyylineno, curr->name);
+                                yylineno, curr->name);
                 } else if (curr) {
                         gf_log ("parser", GF_LOG_ERROR,
                                 "syntax error: line %d (volume '%s'): \"%s\""
 				"\nallowed tokens are 'volume', 'type', "
 				"'subvolumes', 'option', 'end-volume'()",
-                                graphyylineno, curr->name,
-				graphyytext);
+                                yylineno, curr->name,
+				yytext);
                 } else {
                         gf_log ("parser", GF_LOG_ERROR,
                                 "syntax error: line %d (just after volume "
 				"'%s'): \"%s\"\n(%s)",
-                                graphyylineno, curr->name,
-				graphyytext,
+                                yylineno, curr->name,
+				yytext,
                                 "allowed tokens are 'volume', 'type', "
 				"'subvolumes', 'option', 'end-volume'");
                 }
@@ -377,7 +376,7 @@ graphyyerror (const char *str)
                         "syntax error in line %d: \"%s\" \n"
                         "(allowed tokens are 'volume', 'type', "
 			"'subvolumes', 'option', 'end-volume')\n",
-                        graphyylineno, graphyytext);
+                        yylineno, yytext);
         }
 
         return -1;
@@ -482,7 +481,6 @@ preprocess (FILE *srcfp, FILE *dstfp)
 					cmd_buf_size *= 2;
 					cmd = GF_REALLOC (cmd, cmd_buf_size);
                                         if (cmd == NULL) {
-                                                GF_FREE (result);
                                                 return -1;
                                         }
 
@@ -524,7 +522,6 @@ preprocess (FILE *srcfp, FILE *dstfp)
 out:
 	fseek (srcfp, 0L, SEEK_SET);
 	fseek (dstfp, 0L, SEEK_SET);
-
 	GF_FREE (cmd);
 	GF_FREE (result);
 
@@ -532,7 +529,7 @@ out:
 }
 
 
-extern FILE *graphyyin;
+extern FILE *yyin;
 
 glusterfs_graph_t *
 glusterfs_graph_new ()
@@ -560,7 +557,6 @@ glusterfs_graph_construct (FILE *fp)
         glusterfs_graph_t *graph = NULL;
         FILE              *tmp_file = NULL;
         char               template[PATH_MAX] = {0};
-	static pthread_mutex_t graph_mutex = PTHREAD_MUTEX_INITIALIZER;
 
         graph = glusterfs_graph_new ();
         if (!graph)
@@ -587,14 +583,10 @@ glusterfs_graph_construct (FILE *fp)
                 goto err;
         }
 
-	pthread_mutex_lock (&graph_mutex);
-	{
-		graphyyin = tmp_file;
-		construct = graph;
-		ret = yyparse ();
-		construct = NULL;
-	}
-	pthread_mutex_unlock (&graph_mutex);
+        yyin = tmp_file;
+        construct = graph;
+        ret = yyparse ();
+        construct = NULL;
 
         if (ret == 1) {
                 gf_log ("parser", GF_LOG_DEBUG,

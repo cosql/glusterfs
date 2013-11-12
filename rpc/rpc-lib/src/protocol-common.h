@@ -158,8 +158,6 @@ enum gluster_cli_procnum {
         GLUSTER_CLI_UUID_RESET,
         GLUSTER_CLI_BD_OP,
         GLUSTER_CLI_UUID_GET,
-        GLUSTER_CLI_COPY_FILE,
-        GLUSTER_CLI_SYS_EXEC,
         GLUSTER_CLI_MAXVALUE,
 };
 
@@ -209,10 +207,7 @@ typedef enum {
         GF_AFR_OP_INDEX_SUMMARY,
         GF_AFR_OP_HEALED_FILES,
         GF_AFR_OP_HEAL_FAILED_FILES,
-        GF_AFR_OP_SPLIT_BRAIN_FILES,
-        GF_AFR_OP_STATISTICS,
-        GF_AFR_OP_STATISTICS_HEAL_COUNT,
-        GF_AFR_OP_STATISTICS_HEAL_COUNT_PER_REPLICA,
+        GF_AFR_OP_SPLIT_BRAIN_FILES
 } gf_xl_afr_op_t ;
 
 typedef enum {

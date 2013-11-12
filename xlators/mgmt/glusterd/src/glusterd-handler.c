@@ -408,7 +408,6 @@ glusterd_add_volume_detail_to_dict (glusterd_volinfo_t *volinfo,
 
         list_for_each_entry (brickinfo, &volinfo->bricks, brick_list) {
                 char    brick[1024] = {0,};
-                char    brick_uuid[64] = {0,};
                 snprintf (key, 256, "volume%d.brick%d", count, i);
                 snprintf (brick, 1024, "%s:%s", brickinfo->hostname,
                           brickinfo->path);
@@ -416,15 +415,6 @@ glusterd_add_volume_detail_to_dict (glusterd_volinfo_t *volinfo,
                 ret = dict_set_dynstr (volumes, key, buf);
                 if (ret)
                         goto out;
-                snprintf (key, 256, "volume%d.brick%d.uuid", count, i);
-                snprintf (brick_uuid, 64, "%s", uuid_utoa (brickinfo->uuid));
-                buf = gf_strdup (brick_uuid);
-                if (!buf)
-                        goto out;
-                ret = dict_set_dynstr (volumes, key, buf);
-                if (ret)
-                        goto out;
-
                 i++;
         }
 
@@ -1156,6 +1146,7 @@ __glusterd_handle_cli_bd_op (rpcsvc_request_t *req)
 
         ret = glusterd_op_begin (req, GD_OP_BD_OP, dict, op_errstr,
                                  sizeof (op_errstr));
+        gf_cmd_log ("bd op: %s", ((ret == 0) ? "SUCCESS": "FAILED"));
 out:
         if (ret && dict)
                 dict_unref (dict);
@@ -2496,10 +2487,8 @@ __glusterd_handle_mount (rpcsvc_request_t *req)
         gf1_cli_mount_rsp rsp     = {0,};
         dict_t *dict              = NULL;
         int ret                   = 0;
-        glusterd_conf_t     *priv   = NULL;
 
         GF_ASSERT (req);
-	priv = THIS->private;
 
         ret = xdr_to_generic (req->msg[0], &mnt_req,
                               (xdrproc_t)xdr_gf1_cli_mount_req);
@@ -2532,10 +2521,8 @@ __glusterd_handle_mount (rpcsvc_request_t *req)
                 }
         }
 
-	synclock_unlock (&priv->big_lock);
         rsp.op_ret = glusterd_do_mount (mnt_req.label, dict,
                                         &rsp.path, &rsp.op_errno);
-	synclock_lock (&priv->big_lock);
 
  out:
         if (!rsp.path)
@@ -3059,13 +3046,9 @@ glusterd_xfer_friend_add_resp (rpcsvc_request_t *req, char *myhostname,
 }
 
 static void
-set_probe_error_str (int op_ret, int op_errno, char *op_errstr, char *errstr,
-                     size_t len, char *hostname, int port)
+get_probe_error_str (int op_ret, int op_errno, char *errstr, size_t len,
+                     char *hostname, int port)
 {
-        if ((op_errstr) && (strcmp (op_errstr, ""))) {
-                snprintf (errstr, len, "%s", op_errstr);
-                return;
-        }
 
         if (!op_ret) {
                 switch (op_errno) {
@@ -3145,8 +3128,11 @@ glusterd_xfer_cli_probe_resp (rpcsvc_request_t *req, int32_t op_ret,
         GF_ASSERT (req);
         GF_ASSERT (this);
 
-        (void) set_probe_error_str (op_ret, op_errno, op_errstr, errstr,
-                                    sizeof (errstr), hostname, port);
+        if (op_errstr == NULL)
+                (void) get_probe_error_str (op_ret, op_errno, errstr,
+                                            sizeof (errstr), hostname, port);
+        else
+                snprintf (errstr, sizeof (errstr), "%s", op_errstr);
 
         if (dict) {
                 ret = dict_get_str (dict, "cmd-str", &cmd_str);
@@ -3175,14 +3161,9 @@ glusterd_xfer_cli_probe_resp (rpcsvc_request_t *req, int32_t op_ret,
 }
 
 static void
-set_deprobe_error_str (int op_ret, int op_errno, char *op_errstr, char *errstr,
-                       size_t len, char *hostname)
+get_deprobe_error_str (int op_ret, int op_errno, char *errstr, size_t len,
+                       char *hostname)
 {
-        if ((op_errstr) && (strcmp (op_errstr, ""))) {
-                snprintf (errstr, len, "%s", op_errstr);
-                return;
-        }
-
         if (op_ret) {
                 switch (op_errno) {
                         case GF_DEPROBE_LOCALHOST:
@@ -3234,8 +3215,8 @@ glusterd_xfer_cli_deprobe_resp (rpcsvc_request_t *req, int32_t op_ret,
 
         GF_ASSERT (req);
 
-        (void) set_deprobe_error_str (op_ret, op_errno, op_errstr, errstr,
-                                      sizeof (errstr), hostname);
+        (void) get_deprobe_error_str (op_ret, op_errno, errstr, sizeof (errstr),
+                                      hostname);
 
         if (dict) {
                 ret = dict_get_str (dict, "cmd-str", &cmd_str);
@@ -3941,8 +3922,6 @@ rpcsvc_actor_t gd_svc_cli_actors[] = {
 #ifdef HAVE_BD_XLATOR
         [GLUSTER_CLI_BD_OP]              = {"BD_OP",              GLUSTER_CLI_BD_OP,            glusterd_handle_cli_bd_op,             NULL, 0, DRC_NA},
 #endif
-        [GLUSTER_CLI_COPY_FILE]     = {"COPY_FILE", GLUSTER_CLI_COPY_FILE, glusterd_handle_copy_file, NULL, 0, DRC_NA},
-        [GLUSTER_CLI_SYS_EXEC]      = {"SYS_EXEC", GLUSTER_CLI_SYS_EXEC, glusterd_handle_sys_exec, NULL, 0, DRC_NA},
 };
 
 struct rpcsvc_program gd_svc_cli_prog = {

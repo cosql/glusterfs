@@ -18,8 +18,6 @@
 PROGNAME="Ssamba-stop"
 OPTSPEC="volname:"
 VOL=
-CONFIGFILE=
-PIDDIR=
 
 function parse_args () {
         ARGS=$(getopt -l $OPTSPEC  -name $PROGNAME $@)
@@ -40,24 +38,16 @@ function parse_args () {
         done
 }
 
-function find_config_info () {
-        cmdout=`smbd -b | grep smb.conf`
-        if [ $? -ne 0 ];then
-                echo "Samba is not installed"
-                exit 1
-        fi
-        CONFIGFILE=`echo $cmdout | awk {'print $2'}`
-        PIDDIR=`smbd -b | grep PIDDIR | awk {'print $2'}`
-}
-
 function del_samba_share () {
         volname=$1
-        sed -i "/\[gluster-$volname\]/,/^$/d" ${CONFIGFILE}
+        cp /etc/samba/smb.conf /tmp/smb.conf
+        sed -i "/gluster-$volname/,/^$/d" /tmp/smb.conf &&\
+                cp /tmp/smb.conf /etc/samba/smb.conf
 }
 
 function sighup_samba () {
-        pid=`cat ${PIDDIR}/smbd.pid`
-        if [ "x$pid" != "x" ]
+        pid=`cat /var/run/smbd.pid`
+        if [ $pid != "" ]
         then
                 kill -HUP $pid;
         else
@@ -66,6 +56,5 @@ function sighup_samba () {
 }
 
 parse_args $@
-find_config_info
 del_samba_share $VOL
 sighup_samba

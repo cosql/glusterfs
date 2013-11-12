@@ -15,8 +15,8 @@
 #include "config.h"
 #endif
 
-#ifndef GSYNC_CONF_TEMPLATE
-#define GSYNC_CONF_TEMPLATE GEOREP"/gsyncd_template.conf"
+#ifndef GSYNC_CONF
+#define GSYNC_CONF GEOREP"/gsyncd.conf"
 #endif
 
 #include <pthread.h>
@@ -162,12 +162,6 @@ typedef struct glusterd_gsync_status_temp {
         glusterd_volinfo_t *volinfo;
         char *node;
 }glusterd_gsync_status_temp_t;
-
-typedef enum cli_cmd_type_ {
-        PER_REPLICA,
-        ALL_REPLICA,
- } cli_cmd_type;
-
 int
 glusterd_op_sm_new_event (glusterd_op_sm_event_type_t event_type,
                           glusterd_op_sm_event_t **new_event);
@@ -276,7 +270,7 @@ glusterd_are_all_volumes_stopped ();
 int
 glusterd_stop_bricks (glusterd_volinfo_t *volinfo);
 int
-gsync_status (char *master, char *slave, char *conf_path, int *status);
+gsync_status (char *master, char *slave, int *status);
 
 int
 glusterd_check_gsync_running (glusterd_volinfo_t *volinfo, gf_boolean_t *flag);

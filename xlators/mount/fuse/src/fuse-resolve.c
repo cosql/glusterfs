@@ -26,8 +26,6 @@ int fuse_migrate_fd (xlator_t *this, fd_t *fd, xlator_t *old_subvol,
 fuse_fd_ctx_t *
 fuse_fd_ctx_get (xlator_t *this, fd_t *fd);
 
-gf_boolean_t fuse_inode_needs_lookup (inode_t *inode, xlator_t *this);
-
 static int
 fuse_resolve_loc_touchup (fuse_state_t *state)
 {
@@ -203,11 +201,7 @@ fuse_resolve_gfid (fuse_state_t *state)
                 uuid_copy (resolve_loc->gfid, resolve->gfid);
         }
 
-	/* inode may already exist in case we are looking up an inode which was
-	   linked through readdirplus */
-	resolve_loc->inode = inode_find (state->itable, resolve_loc->gfid);
-	if (!resolve_loc->inode)
-		resolve_loc->inode = inode_new (state->itable);
+	resolve_loc->inode = inode_new (state->itable);
 	ret = loc_path (resolve_loc, NULL);
 
         if (ret <= 0) {
@@ -245,9 +239,6 @@ fuse_resolve_parent_simple (fuse_state_t *state)
 
 	parent = resolve->parhint;
 	if (parent->table == state->itable) {
-		if (fuse_inode_needs_lookup (parent, THIS))
-			return 1;
-
 		/* no graph switches since */
 		loc->parent = inode_ref (parent);
 		uuid_copy (loc->pargfid, parent->gfid);
@@ -272,10 +263,6 @@ fuse_resolve_parent_simple (fuse_state_t *state)
         parent = inode_find (state->itable, resolve->pargfid);
 	if (!parent) {
 		/* non decisive result - parent missing */
-		return 1;
-	}
-	if (fuse_inode_needs_lookup (parent, THIS)) {
-		inode_unref (parent);
 		return 1;
 	}
 
@@ -327,17 +314,14 @@ fuse_resolve_inode_simple (fuse_state_t *state)
 	loc = state->loc_now;
 
 	inode = resolve->hint;
-	if (inode->table == state->itable)
+	if (inode->table == state->itable) {
 		inode_ref (inode);
-	else
-		inode = inode_find (state->itable, resolve->gfid);
-
-        if (inode) {
-		if (!fuse_inode_needs_lookup (inode, THIS))
-			goto found;
-		/* inode was linked through readdirplus */
-		inode_unref (inode);
+		goto found;
 	}
+
+        inode = inode_find (state->itable, resolve->gfid);
+        if (inode)
+		goto found;
 
         return 1;
 found:

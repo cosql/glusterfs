@@ -11,11 +11,7 @@
         GF_DEFRAG_STATUS_STARTED,
         GF_DEFRAG_STATUS_STOPPED,
         GF_DEFRAG_STATUS_COMPLETE,
-        GF_DEFRAG_STATUS_FAILED,
-        GF_DEFRAG_STATUS_LAYOUT_FIX_STARTED,
-        GF_DEFRAG_STATUS_LAYOUT_FIX_STOPPED,
-        GF_DEFRAG_STATUS_LAYOUT_FIX_COMPLETE,
-        GF_DEFRAG_STATUS_LAYOUT_FIX_FAILED
+        GF_DEFRAG_STATUS_FAILED
 } ;
 
  enum gf1_cluster_type {
@@ -55,8 +51,7 @@ enum gf_quota_type {
 };
 
 enum gf1_cli_friends_list {
-        GF_CLI_LIST_PEERS = 1,
-        GF_CLI_LIST_POOL_NODES = 2
+        GF_CLI_LIST_ALL = 1
 } ;
 
 enum gf1_cli_get_volume {
@@ -79,9 +74,7 @@ enum gf1_cli_gsync_set {
         GF_GSYNC_OPTION_TYPE_STOP,
         GF_GSYNC_OPTION_TYPE_CONFIG,
         GF_GSYNC_OPTION_TYPE_STATUS,
-        GF_GSYNC_OPTION_TYPE_ROTATE,
-        GF_GSYNC_OPTION_TYPE_CREATE,
-        GF_GSYNC_OPTION_TYPE_DELETE
+        GF_GSYNC_OPTION_TYPE_ROTATE
 };
 
 enum gf1_cli_stats_op {
@@ -113,7 +106,6 @@ enum gf_cli_status_type {
         GF_CLI_STATUS_FD           = 0x0008,    /*0000000001000*/
         GF_CLI_STATUS_CALLPOOL     = 0x0010,    /*0000000010000*/
         GF_CLI_STATUS_DETAIL       = 0x0020,    /*0000000100000*/
-        GF_CLI_STATUS_TASKS        = 0x0040,    /*0000001000000*/
         GF_CLI_STATUS_MASK         = 0x00FF,    /*0000011111111 Used to get the op*/
         GF_CLI_STATUS_VOL          = 0x0100,    /*0000100000000*/
         GF_CLI_STATUS_ALL          = 0x0200,    /*0001000000000*/

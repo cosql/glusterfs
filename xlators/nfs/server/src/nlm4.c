@@ -149,10 +149,8 @@ nfs3_fh_to_xlator (struct nfs3_state *nfs3, struct nfs3_fh *fh);
                         xlatorp = nfs3_fh_to_xlator (cst->nfs3state,    \
                                                      &cst->resolvefh);  \
                         uuid_unparse (cst->resolvefh.gfid, gfid);       \
-                        snprintf (buf, sizeof (buf), "(%s) %s : %s",             \
-                                  trans->peerinfo.identifier,           \
-                                  xlatorp ? xlatorp->name : "ERR",      \
-                                  gfid);                                \
+                        sprintf (buf, "(%s) %s : %s", trans->peerinfo.identifier,\
+                        xlatorp ? xlatorp->name : "ERR", gfid);         \
                         gf_log (GF_NLM, GF_LOG_ERROR, "Unable to resolve FH"\
                                 ": %s", buf);                           \
                         nfstat = nlm4_errno_to_nlm4stat (cst->resolve_errno);\
@@ -237,7 +235,7 @@ nlm_is_oh_same_lkowner (gf_lkowner_t *a, netobj *b)
                 !memcmp (a->data, b->n_bytes, a->len));
 }
 
-nlm4_stats
+nfsstat3
 nlm4_errno_to_nlm4stat (int errnum)
 {
         nlm4_stats        stat = nlm4_denied;
@@ -436,11 +434,10 @@ ret:
 int
 nlm4svc_submit_reply (rpcsvc_request_t *req, void *arg, nlm4_serializer sfunc)
 {
-        struct iovec            outmsg  = {0, };
-        struct iobuf            *iob    = NULL;
-        struct nfs3_state       *nfs3   = NULL;
-        int                     ret     = -1;
-        ssize_t                 msglen  = 0;
+        struct iovec            outmsg = {0, };
+        struct iobuf            *iob = NULL;
+        struct nfs3_state       *nfs3 = NULL;
+        int                     ret = -1;
         struct iobref           *iobref = NULL;
 
         if (!req)
@@ -465,12 +462,7 @@ nlm4svc_submit_reply (rpcsvc_request_t *req, void *arg, nlm4_serializer sfunc)
         /* Use the given serializer to translate the give C structure in arg
          * to XDR format which will be written into the buffer in outmsg.
          */
-        msglen = sfunc (outmsg, arg);
-        if (msglen < 0) {
-                gf_log (GF_NLM, GF_LOG_ERROR, "Failed to encode message");
-                goto ret;
-        }
-        outmsg.iov_len = msglen;
+        outmsg.iov_len = sfunc (outmsg, arg);
 
         iobref = iobref_new ();
         if (iobref == NULL) {
@@ -478,11 +470,7 @@ nlm4svc_submit_reply (rpcsvc_request_t *req, void *arg, nlm4_serializer sfunc)
                 goto ret;
         }
 
-        ret = iobref_add (iobref, iob);
-        if (ret) {
-                gf_log (GF_NLM, GF_LOG_ERROR, "Failed to add iob to iobref");
-                goto ret;
-        }
+        iobref_add (iobref, iob);
 
         /* Then, submit the message for transmission. */
         ret = rpcsvc_submit_message (req, &outmsg, 1, NULL, 0, iobref);
@@ -968,7 +956,7 @@ nlm4_establish_callback (void *csarg)
         case AF_INET:
                 inet_ntop (AF_INET, &sock_union.sin.sin_addr, peerip,
                            INET6_ADDRSTRLEN+1);
-                inet_ntop (AF_INET, &(((struct sockaddr_in *)&cs->trans->myinfo.sockaddr)->sin_addr),
+                inet_ntop (AF_INET, &(((struct sockaddr_in *)&cs->req->trans->myinfo.sockaddr)->sin_addr),
                            myip, INET6_ADDRSTRLEN + 1);
 
                 break;
@@ -1106,11 +1094,7 @@ nlm4svc_send_granted (nfs3_call_state_t *cs)
                 goto ret;
         }
 
-        ret = iobref_add (iobref, iobuf);
-        if (ret) {
-                gf_log (GF_NLM, GF_LOG_ERROR, "Failed to add iob to iobref");
-                goto ret;
-        }
+        iobref_add (iobref, iobuf);
 
         ret = rpc_clnt_submit (rpc_clnt, &nlm4clntprog, NLM4_GRANTED,
                                nlm4svc_send_granted_cbk, &outmsg, 1,
@@ -1830,7 +1814,7 @@ nlm4_add_share_to_inode (nlm_share_t *share)
         inode = share->inode;
         ret = inode_ctx_get (inode, this, &ctx);
 
-        if (ret == -1) {
+        if (ret || !head) {
                 ictx = GF_CALLOC (1, sizeof (struct nfs_inode_ctx),
                                   gf_nfs_mt_inode_ctx);
                 if (!ictx ) {
@@ -2365,7 +2349,7 @@ nlm4svc_init(xlator_t *nfsx)
         int ret = -1;
         char *portstr = NULL;
         pthread_t thr;
-        struct timespec timeout = {0,};
+        struct timeval timeout = {0,};
         FILE   *pidfile = NULL;
         pid_t   pid     = -1;
 
@@ -2413,7 +2397,7 @@ nlm4svc_init(xlator_t *nfsx)
                 goto err;
         }
 
-        ret = rpcsvc_create_listeners (nfs->rpcsvc, options, "NLM");
+        rpcsvc_create_listeners (nfs->rpcsvc, options, "NLM");
         if (ret == -1) {
                 gf_log (GF_NLM, GF_LOG_ERROR, "Unable to create listeners");
                 dict_unref (options);
@@ -2469,8 +2453,6 @@ nlm4svc_init(xlator_t *nfsx)
         pthread_create (&thr, NULL, nsm_thread, (void*)NULL);
 
         timeout.tv_sec = nlm_grace_period;
-        timeout.tv_nsec = 0;
-
         gf_timer_call_after (nfsx->ctx, timeout, nlm_grace_period_over, NULL);
         return &nlm4prog;
 err:

@@ -897,7 +897,6 @@ cli_cmd_volume_set_cbk (struct cli_state *state, struct cli_cmd_word *word,
         call_frame_t            *frame = NULL;
         dict_t                  *options = NULL;
         cli_local_t             *local = NULL;
-        char                    *op_errstr = NULL;
 
         proc = &cli_rpc_prog->proctable[GLUSTER_CLI_SET_VOLUME];
 
@@ -905,14 +904,9 @@ cli_cmd_volume_set_cbk (struct cli_state *state, struct cli_cmd_word *word,
         if (!frame)
                 goto out;
 
-        ret = cli_cmd_volume_set_parse (words, wordcount, &options, &op_errstr);
+        ret = cli_cmd_volume_set_parse (words, wordcount, &options);
         if (ret) {
-                if (op_errstr) {
-                    cli_err ("%s", op_errstr);
-                    GF_FREE (op_errstr);
-                } else
-                    cli_usage_out (word->pattern);
-
+                cli_usage_out (word->pattern);
                 parse_error = 1;
                 goto out;
         }
@@ -1893,8 +1887,7 @@ struct cli_cmd volume_cmds[] = {
          "reset all the reconfigured options"},
 
 #if (SYNCDAEMON_COMPILE)
-        {"volume "GEOREP" [<VOLNAME>] [<SLAVE-URL>] {create [push-pem] [force]"
-         "|start [force]|stop [force]|config|status [detail]|delete} [options...]",
+        {"volume "GEOREP" [<VOLNAME>] [<SLAVE-URL>] {start|stop|config|status|log-rotate} [options...]",
          cli_cmd_volume_gsync_set_cbk,
          "Geo-sync operations",
          cli_cmd_check_gsync_exists_cbk},
@@ -1914,11 +1907,11 @@ struct cli_cmd volume_cmds[] = {
            "volume top operations"},
 
         { "volume status [all | <VOLNAME> [nfs|shd|<BRICK>]]"
-          " [detail|clients|mem|inode|fd|callpool|tasks]",
+          " [detail|clients|mem|inode|fd|callpool]",
           cli_cmd_volume_status_cbk,
           "display status of all or specified volume(s)/brick"},
 
-        { "volume heal <VOLNAME> [{full | statistics {heal-count {replica <hostname:brickname>}} |info {healed | heal-failed | split-brain}}]",
+        { "volume heal <VOLNAME> [{full | info {healed | heal-failed | split-brain}}]",
           cli_cmd_volume_heal_cbk,
           "self-heal commands on volume specified by <VOLNAME>"},
 

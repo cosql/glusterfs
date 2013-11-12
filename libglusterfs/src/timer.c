@@ -17,18 +17,19 @@
 #include "logging.h"
 #include "common-utils.h"
 #include "globals.h"
-#include "timespec.h"
+
+#define TS(tv) ((((unsigned long long) tv.tv_sec) * 1000000) + (tv.tv_usec))
 
 gf_timer_t *
 gf_timer_call_after (glusterfs_ctx_t *ctx,
-                     struct timespec delta,
+                     struct timeval delta,
                      gf_timer_cbk_t callbk,
                      void *data)
 {
         gf_timer_registry_t *reg = NULL;
         gf_timer_t *event = NULL;
         gf_timer_t *trav = NULL;
-        uint64_t at = 0;
+        unsigned long long at = 0L;
 
         if (ctx == NULL)
         {
@@ -47,8 +48,10 @@ gf_timer_call_after (glusterfs_ctx_t *ctx,
         if (!event) {
                 return NULL;
         }
-        timespec_now (&event->at);
-        timespec_adjust_delta (event->at, delta);
+        gettimeofday (&event->at, NULL);
+        event->at.tv_usec = ((event->at.tv_usec + delta.tv_usec) % 1000000);
+        event->at.tv_sec += ((event->at.tv_usec + delta.tv_usec) / 1000000);
+        event->at.tv_sec += delta.tv_sec;
         at = TS (event->at);
         event->callbk = callbk;
         event->data = data;
@@ -124,7 +127,7 @@ void *
 gf_timer_proc (void *ctx)
 {
         gf_timer_registry_t *reg = NULL;
-        const struct timespec sleepts = {.tv_sec = 1, .tv_nsec = 0, };
+	const struct timespec sleepts = {.tv_sec = 1, .tv_nsec = 0, };
 
         if (ctx == NULL)
         {
@@ -139,14 +142,14 @@ gf_timer_proc (void *ctx)
         }
 
         while (!reg->fin) {
-                uint64_t now;
-                struct timespec now_ts;
+                unsigned long long now;
+                struct timeval now_tv;
                 gf_timer_t *event = NULL;
 
-                timespec_now (&now_ts);
-                now = TS (now_ts);
+                gettimeofday (&now_tv, NULL);
+                now = TS (now_tv);
                 while (1) {
-                        uint64_t at;
+                        unsigned long long at;
                         char need_cbk = 0;
 
                         pthread_mutex_lock (&reg->lock);
@@ -210,7 +213,7 @@ gf_timer_registry_init (glusterfs_ctx_t *ctx)
                 reg->stale.prev = &reg->stale;
 
                 ctx->timer = reg;
-                gf_thread_create (&reg->th, NULL, gf_timer_proc, ctx);
+                pthread_create (&reg->th, NULL, gf_timer_proc, ctx);
         }
 out:
         return ctx->timer;

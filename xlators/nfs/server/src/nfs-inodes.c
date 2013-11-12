@@ -57,10 +57,10 @@ nfl_inodes_init (struct nfs_fop_local *nfl, inode_t *inode, inode_t *parent,
                 nfl->newparent = inode_ref (newparent);
 
         if (name)
-                strncpy (nfl->path, name, NFS_NAME_MAX);
+                strcpy (nfl->path, name);
 
         if (newname)
-                strncpy (nfl->newpath, newname, NFS_NAME_MAX);
+                strcpy (nfl->newpath, newname);
 
         return;
 }
