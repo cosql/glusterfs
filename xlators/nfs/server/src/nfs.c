@@ -2,10 +2,19 @@
   Copyright (c) 2010-2011 Gluster, Inc. <http://www.gluster.com>
   This file is part of GlusterFS.
 
-  This file is licensed to you under your choice of the GNU Lesser
-  General Public License, version 3 or any later version (LGPLv3 or
-  later), or the GNU General Public License, version 2 (GPLv2), in all
-  cases as published by the Free Software Foundation.
+  GlusterFS is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published
+  by the Free Software Foundation; either version 3 of the License,
+  or (at your option) any later version.
+
+  GlusterFS is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see
+  <http://www.gnu.org/licenses/>.
 */
 
 /* This is the primary translator source for NFS.
@@ -1115,39 +1124,28 @@ struct volume_options options[] = {
           .min  = GF_NFS3_RTMIN,
           .max  = GF_NFS3_RTMAX,
           .default_value = TOSTRING(GF_NFS3_RTPREF),
-          .description = "Size in which the client should issue read requests "
-                         "to the Gluster NFSv3 server. Must be a multiple of "
-                         "4KB (4096). Min and Max supported values are 4KB "
-                         "(4096) and 1MB (1048576) respectively. If the "
-                         "specified value is within the supported range but "
-                         "not a multiple of 4096, it is rounded up to the "
-                         "nearest multiple of 4096."
+          .description = "Size in which the client should issue read requests"
+                         " to the Gluster NFSv3 server. Must be a multiple of"
+                         " 4KB. Max supported value is 1MB(1048576)."
         },
         { .key  = {"nfs3.write-size"},
           .type = GF_OPTION_TYPE_SIZET,
           .min  = GF_NFS3_WTMIN,
           .max  = GF_NFS3_WTMAX,
           .default_value = TOSTRING(GF_NFS3_WTPREF),
-          .description = "Size in which the client should issue write requests "
-                         "to the Gluster NFSv3 server. Must be a multiple of "
-                         "1KB (1024). Min and Max supported values are "
-                         "4KB (4096) and 1MB(1048576) respectively. If the "
-                         "specified value is within the supported range but "
-                         "not a multiple of 4096, it is rounded up to the "
-                         "nearest multiple of 4096."
+          .description = "Size in which the client should issue write requests"
+                         " to the Gluster NFSv3 server. Must be a multiple of"
+                         " 4KB. Max supported value is 1MB(1048576)."
         },
         { .key  = {"nfs3.readdir-size"},
           .type = GF_OPTION_TYPE_SIZET,
           .min  = GF_NFS3_DTMIN,
           .max  = GF_NFS3_DTMAX,
           .default_value = TOSTRING(GF_NFS3_DTPREF),
-          .description = "Size in which the client should issue directory "
-                         "reading requests to the Gluster NFSv3 server. Must "
-                         "be a multiple of 1KB (1024). Min and Max supported "
-                         "values are 4KB (4096) and 1MB (1048576) respectively."
-                         "If the specified value is within the supported range "
-                         "but not a multiple of 4096, it is rounded up to the "
-                         "nearest multiple of 4096."
+          .description = "Size in which the client should issue directory"
+                         " reading requests to Gluster NFSv3 server. Must"
+                         " be a multiple of 4KB. Max supported value is"
+                         " 1MB(1048576)."
         },
         { .key  = {"nfs3.*.volume-access"},
           .type = GF_OPTION_TYPE_STR,
@@ -1358,15 +1356,6 @@ struct volume_options options[] = {
                          "only one registration is possible with "
                          "portmap service. Use this option to turn off portmap "
                          "registration for Gluster NFS. On by default"
-        },
-        { .key  = {"rpc.outstanding-rpc-limit"},
-          .type = GF_OPTION_TYPE_INT,
-          .min  = 0,
-          .max  = RPCSVC_MAX_OUTSTANDING_RPC_LIMIT,
-          .default_value = TOSTRING(RPCSVC_DEFAULT_OUTSTANDING_RPC_LIMIT),
-          .description = "Parameter to throttle the number of incoming RPC "
-                         "requests from a client. 0 means no limit (can "
-                         "potentially run out of memory)"
         },
         { .key  = {"nfs.port"},
           .type = GF_OPTION_TYPE_INT,

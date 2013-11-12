@@ -25,7 +25,7 @@
 
 static pl_entry_lock_t *
 new_entrylk_lock (pl_inode_t *pinode, const char *basename, entrylk_type type,
-                  client_t *client, pid_t client_pid, gf_lkowner_t *owner,
+                  void *trans, pid_t client_pid, gf_lkowner_t *owner,
                   const char *volume)
 
 {
@@ -39,7 +39,7 @@ new_entrylk_lock (pl_inode_t *pinode, const char *basename, entrylk_type type,
 
         newlock->basename   = basename ? gf_strdup (basename) : NULL;
         newlock->type       = type;
-        newlock->trans      = client;
+        newlock->trans      = trans;
         newlock->volume     = volume;
         newlock->client_pid = client_pid;
         newlock->owner      = *owner;
@@ -310,10 +310,14 @@ __lock_name (pl_inode_t *pinode, const char *basename, entrylk_type type,
 {
         pl_entry_lock_t *lock       = NULL;
         pl_entry_lock_t *conf       = NULL;
+        void            *trans      = NULL;
+        pid_t            client_pid = 0;
         int              ret        = -EINVAL;
 
-        lock = new_entrylk_lock (pinode, basename, type,
-                                 frame->root->client, frame->root->pid,
+        trans = frame->root->trans;
+        client_pid = frame->root->pid;
+
+        lock = new_entrylk_lock (pinode, basename, type, trans, client_pid,
                                  &frame->root->lk_owner, dom->domain);
         if (!lock) {
                 ret = -ENOMEM;
@@ -322,7 +326,7 @@ __lock_name (pl_inode_t *pinode, const char *basename, entrylk_type type,
 
         lock->frame   = frame;
         lock->this    = this;
-        lock->trans   = frame->root->client;
+        lock->trans   = trans;
 
         if (conn_id) {
                 lock->connection_id = gf_strdup (conn_id);
@@ -527,8 +531,8 @@ grant_blocked_entry_locks (xlator_t *this, pl_inode_t *pl_inode,
                 STACK_UNWIND_STRICT (entrylk, lock->frame, 0, 0, NULL);
 
                 GF_FREE (lock->connection_id);
-                GF_FREE ((char *)lock->basename);
-                GF_FREE (lock);
+		GF_FREE ((char *)lock->basename);
+		GF_FREE (lock);
         }
 
         GF_FREE ((char *)unlocked->basename);
@@ -539,13 +543,13 @@ grant_blocked_entry_locks (xlator_t *this, pl_inode_t *pl_inode,
 }
 
 /**
- * release_entry_locks_for_client: release all entry locks from this
- * client for this loc_t
+ * release_entry_locks_for_transport: release all entry locks from this
+ * transport for this loc_t
  */
 
 static int
-release_entry_locks_for_client (xlator_t *this, pl_inode_t *pinode,
-                                pl_dom_list_t *dom, client_t *client)
+release_entry_locks_for_transport (xlator_t *this, pl_inode_t *pinode,
+                                   pl_dom_list_t *dom, void *trans)
 {
         pl_entry_lock_t  *lock = NULL;
         pl_entry_lock_t  *tmp = NULL;
@@ -559,14 +563,14 @@ release_entry_locks_for_client (xlator_t *this, pl_inode_t *pinode,
         {
                 list_for_each_entry_safe (lock, tmp, &dom->blocked_entrylks,
                                           blocked_locks) {
-                        if (lock->trans != client)
+                        if (lock->trans != trans)
                                 continue;
 
                         list_del_init (&lock->blocked_locks);
 
                         gf_log (this->name, GF_LOG_TRACE,
                                 "releasing lock on  held by "
-                                "{client=%p}", client);
+                                "{transport=%p}",trans);
 
                         list_add (&lock->blocked_locks, &released);
 
@@ -574,14 +578,14 @@ release_entry_locks_for_client (xlator_t *this, pl_inode_t *pinode,
 
                 list_for_each_entry_safe (lock, tmp, &dom->entrylk_list,
                                           domain_list) {
-                        if (lock->trans != client)
+                        if (lock->trans != trans)
                                 continue;
 
                         list_del_init (&lock->domain_list);
 
                         gf_log (this->name, GF_LOG_TRACE,
                                 "releasing lock on  held by "
-                                "{client=%p}", client);
+                                "{transport=%p}",trans);
 
                         GF_FREE ((char *)lock->basename);
                         GF_FREE (lock->connection_id);
@@ -626,16 +630,19 @@ pl_common_entrylk (call_frame_t *frame, xlator_t *this,
                    dict_t *xdata)
 
 {
-        int32_t          op_ret   = -1;
-        int32_t          op_errno = 0;
+        int32_t  op_ret   = -1;
+        int32_t  op_errno = 0;
+
+        void *        transport = NULL;
+
+        pl_inode_t *     pinode   = NULL;
         int              ret      = -1;
-        char             unwind   = 1;
-        GF_UNUSED int    dict_ret = -1;
-        pl_inode_t      *pinode   = NULL;
         pl_entry_lock_t *unlocked = NULL;
-        pl_dom_list_t   *dom      = NULL;
+        char             unwind   = 1;
+
+        pl_dom_list_t          *dom = NULL;
         char            *conn_id  = NULL;
-        pl_ctx_t        *ctx      = NULL;
+        GF_UNUSED int    dict_ret = -1;
 
         if (xdata)
                 dict_ret = dict_get_str (xdata, "connection-id", &conn_id);
@@ -654,17 +661,19 @@ pl_common_entrylk (call_frame_t *frame, xlator_t *this,
 
         entrylk_trace_in (this, frame, volume, fd, loc, basename, cmd, type);
 
+        transport = frame->root->trans;
+
         if (frame->root->lk_owner.len == 0) {
                 /*
                   this is a special case that means release
-                  all locks from this client
+                  all locks from this transport
                 */
 
                 gf_log (this->name, GF_LOG_TRACE,
-                        "Releasing locks for client %p", frame->root->client);
+                        "Releasing locks for transport %p", transport);
 
-                release_entry_locks_for_client (this, pinode, dom,
-                                                frame->root->client);
+                release_entry_locks_for_transport (this, pinode, dom,
+                                                   transport);
                 op_ret = 0;
 
                 goto out;
@@ -737,24 +746,6 @@ out:
                 entrylk_trace_out (this, frame, volume, fd, loc, basename,
                                    cmd, type, op_ret, op_errno);
 
-                ctx = pl_ctx_get (frame->root->client, this);
-
-                if (ctx == NULL) {
-                        gf_log (this->name, GF_LOG_INFO, "pl_ctx_get() failed");
-                        goto unwind;
-                }
-
-                if (cmd == ENTRYLK_UNLOCK)
-                        pl_del_locker (ctx->ltable, volume, loc, fd,
-                                       &frame->root->lk_owner,
-                                       GF_FOP_ENTRYLK);
-                else
-                        pl_add_locker (ctx->ltable, volume, loc, fd,
-                                       frame->root->pid,
-                                       &frame->root->lk_owner,
-                                       GF_FOP_ENTRYLK);
-
-unwind:
                 STACK_UNWIND_STRICT (entrylk, frame, op_ret, op_errno, NULL);
         } else {
                 entrylk_trace_block (this, frame, volume, fd, loc, basename,
@@ -776,6 +767,7 @@ pl_entrylk (call_frame_t *frame, xlator_t *this,
             const char *volume, loc_t *loc, const char *basename,
             entrylk_cmd cmd, entrylk_type type, dict_t *xdata)
 {
+
         pl_common_entrylk (frame, this, volume, loc->inode, basename, cmd,
                            type, loc, NULL, xdata);
 
@@ -794,6 +786,7 @@ pl_fentrylk (call_frame_t *frame, xlator_t *this,
              const char *volume, fd_t *fd, const char *basename,
              entrylk_cmd cmd, entrylk_type type, dict_t *xdata)
 {
+
         pl_common_entrylk (frame, this, volume, fd->inode, basename, cmd,
                            type, NULL, fd, xdata);
 

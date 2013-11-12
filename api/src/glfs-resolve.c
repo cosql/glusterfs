@@ -67,7 +67,6 @@ __glfs_first_lookup (struct glfs *fs, xlator_t *subvol)
 	}
 	pthread_mutex_lock (&fs->mutex);
 	fs->migration_in_progress = 0;
-	pthread_cond_broadcast (&fs->cond);
 
 	return ret;
 }
@@ -129,7 +128,6 @@ __glfs_refresh_inode (struct glfs *fs, xlator_t *subvol, inode_t *inode)
 	}
 	pthread_mutex_lock (&fs->mutex);
 	fs->migration_in_progress = 0;
-	pthread_cond_broadcast (&fs->cond);
 
 	return newinode;
 }
@@ -667,7 +665,6 @@ __glfs_migrate_fd (struct glfs *fs, xlator_t *newsubvol, struct glfs_fd *glfd)
 	}
 	pthread_mutex_lock (&fs->mutex);
 	fs->migration_in_progress = 0;
-	pthread_cond_broadcast (&fs->cond);
 
 	return newfd;
 }

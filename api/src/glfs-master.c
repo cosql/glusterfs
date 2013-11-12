@@ -24,7 +24,6 @@
 #include "glusterfs.h"
 
 #include "glfs-internal.h"
-#include "glfs-mem-types.h"
 
 
 int
@@ -115,18 +114,6 @@ notify (xlator_t *this, int event, void *data, ...)
 int
 mem_acct_init (xlator_t *this)
 {
-	int ret = -1;
-
-	if (!this)
-		return ret;
-
-	ret = xlator_mem_acct_init (this, glfs_mt_end + 1);
-	if (ret) {
-		gf_log (this->name, GF_LOG_ERROR, "Failed to initialise "
-                        "memory accounting");
-		return ret;
-	}
-
 	return 0;
 }
 

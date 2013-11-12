@@ -4,8 +4,7 @@
 # To use ./gverify <master volume> <slave host> <slave volume>
 # Returns 0 if master and slave compatible.
 
-# Considering buffer_size 100MB
-BUFFER_SIZE=104857600;
+BUFFER_SIZE=1000;
 slave_log_file=`gluster --print-logdir`/geo-replication-slaves/slave.log
 
 function SSHM()

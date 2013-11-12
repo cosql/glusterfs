@@ -540,17 +540,14 @@ fi
 dnl FreeBSD > 5 has execinfo as a Ported library for giving a workaround
 dnl solution to GCC backtrace functionality
 
-case $host_os in
-    *freebsd*)
-        CFLAGS="${CFLAGS} -I/usr/local/include"
-    ;;
-esac
-AC_CHECK_HEADERS([execinfo.h], [have_backtrace=yes],
+AC_CHECK_HEADERS([/usr/local/include/execinfo.h], [have_backtrace=yes],
                AC_CHECK_LIB([execinfo], [backtrace], [have_backtrace=yes]))
 dnl               AC_MSG_ERROR([libexecinfo not found libexecinfo required.])))
 
 if test "x${have_backtrace}" = "xyes"; then
    AC_DEFINE(HAVE_BACKTRACE, 1, [define if found backtrace])
+else 
+	echo "back_trace not found"
 fi
 AC_SUBST(HAVE_BACKTRACE)
 
@@ -708,16 +705,16 @@ case $host_os in
         GF_FUSE_LIBS="${GF_FUSE_LIBS} /usr/lib/libutil.so"
         GF_FUSE_LDADD="-lutil"
         GF_CFLAGS=" -I/usr/local/include ${GF_CFLAGS}"
+        CFLAGS=" -I/usr/local/include ${CFLAGS}"
         CFLAGS=" -std=gnu89 ${CFLAGS}"
         GF_CFLAGS=" -std=gnu89 ${GF_CFLAGS}"
         GF_GLUSTERFS_CFLAGS="${GF_CFLAGS}"
-        GF_LDADD="${ARGP_STANDALONE_LDADD} /usr/local/lib/libpython2.7.so /usr/local/lib/libintl.so"
+        GF_LDADD="${ARGP_STANDALONE_LDADD} /usr/local/lib/libpython2.7.so /usr/local/lib/libintl.so /usr/local/lib/libexecinfo.so"
 				LDFLAGS="${LDFLAGS} -L/usr/local/lib"
         if test "x$ac_cv_header_execinfo_h" = "xyes"; then
-	 				 echo "have_backtrace"
            GF_GLUSTERFS_LIBS="-lexecinfo"
         fi
-        BUILD_FUSE_CLIENT=no
+        BUILD_FUSE_CLIENT=yes
         BUILD_FUSERMOUNT=no
         ;;
      *bsd*)

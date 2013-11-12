@@ -25,8 +25,8 @@ struct _call_stack_t;
 typedef struct _call_stack_t call_stack_t;
 struct _call_frame_t;
 typedef struct _call_frame_t call_frame_t;
-struct call_pool;
-typedef struct call_pool call_pool_t;
+struct _call_pool_t;
+typedef struct _call_pool_t call_pool_t;
 
 #include <sys/time.h>
 
@@ -36,7 +36,6 @@ typedef struct call_pool call_pool_t;
 #include "common-utils.h"
 #include "globals.h"
 #include "lkowner.h"
-#include "client_t.h"
 
 #define NFS_PID 1
 #define LOW_PRIO_PROC_PID -1
@@ -47,7 +46,7 @@ typedef int32_t (*ret_fn_t) (call_frame_t *frame,
                              int32_t op_errno,
                              ...);
 
-struct call_pool {
+struct _call_pool_t {
         union {
                 struct list_head   all_frames;
                 struct {
@@ -95,7 +94,7 @@ struct _call_stack_t {
         };
         call_pool_t                  *pool;
         gf_lock_t                     stack_lock;
-        client_t                     *client;
+        void                         *trans;
         uint64_t                      unique;
         void                         *state;  /* pointer to request state */
         uid_t                         uid;

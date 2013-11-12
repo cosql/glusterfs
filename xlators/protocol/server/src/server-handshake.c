@@ -20,6 +20,7 @@
 #include "compat-errno.h"
 #include "glusterfs3.h"
 #include "authenticate.h"
+#include "client_t.h"
 
 struct __get_xl_struct {
         const char *name;
@@ -330,7 +331,6 @@ server_setvolume (rpcsvc_request_t *req)
         gf_setvolume_req     args          = {{0,},};
         gf_setvolume_rsp     rsp           = {0,};
         client_t            *client        = NULL;
-        server_ctx_t        *serv_ctx      = NULL;
         server_conf_t       *conf          = NULL;
         peer_info_t         *peerinfo      = NULL;
         dict_t              *reply         = NULL;
@@ -428,19 +428,13 @@ server_setvolume (rpcsvc_request_t *req)
                 goto fail;
         }
 
-        gf_log (this->name, GF_LOG_DEBUG, "Connected to %s", client->client_uid);
+        gf_log (this->name, GF_LOG_DEBUG, "Connected to %s",
+                client->server_ctx.client_uid);
         cancelled = server_cancel_grace_timer (this, client);
         if (cancelled)//Do gf_client_put on behalf of grace-timer-handler.
                 gf_client_put (client, NULL);
-
-        serv_ctx = server_ctx_get (client, client->this);
-        if (serv_ctx == NULL) {
-                gf_log (this->name, GF_LOG_INFO, "server_ctx_get() failed");
-                goto fail;
-        }
-
-        if (serv_ctx->lk_version != 0 &&
-            serv_ctx->lk_version != lk_version) {
+        if (client->server_ctx.lk_version != 0 &&
+            client->server_ctx.lk_version != lk_version) {
                 (void) server_connection_cleanup (this, client,
                                                   INTERNAL_LOCKS | POSIX_LOCKS);
         }
@@ -571,7 +565,7 @@ server_setvolume (rpcsvc_request_t *req)
 
                 gf_log (this->name, GF_LOG_INFO,
                         "accepted client from %s (version: %s)",
-                        client->client_uid,
+                        client->server_ctx.client_uid,
                         (clnt_version) ? clnt_version : "old");
                 op_ret = 0;
                 client->bound_xl = xl;
@@ -582,7 +576,7 @@ server_setvolume (rpcsvc_request_t *req)
         } else {
                 gf_log (this->name, GF_LOG_ERROR,
                         "Cannot authenticate client from %s %s",
-                        client->client_uid,
+                        client->server_ctx.client_uid,
                         (clnt_version) ? clnt_version : "old");
 
                 op_ret = -1;
@@ -630,7 +624,8 @@ server_setvolume (rpcsvc_request_t *req)
                 gf_log (this->name, GF_LOG_DEBUG,
                         "failed to set 'process-uuid'");
 
-        ret = dict_set_uint32 (reply, "clnt-lk-version", serv_ctx->lk_version);
+        ret = dict_set_uint32 (reply, "clnt-lk-version",
+                               client->server_ctx.lk_version);
         if (ret)
                 gf_log (this->name, GF_LOG_WARNING,
                         "failed to set 'clnt-lk-version'");
@@ -722,7 +717,6 @@ server_set_lk_version (rpcsvc_request_t *req)
         gf_set_lk_ver_req   args     = {0,};
         gf_set_lk_ver_rsp   rsp      = {0,};
         client_t           *client   = NULL;
-        server_ctx_t       *serv_ctx = NULL;
         xlator_t           *this     = NULL;
 
         this = req->svc->mydata;
@@ -740,13 +734,7 @@ server_set_lk_version (rpcsvc_request_t *req)
         }
 
         client = gf_client_get (this, &req->cred, args.uid);
-        serv_ctx = server_ctx_get (client, client->this);
-        if (serv_ctx == NULL) {
-                gf_log (this->name, GF_LOG_INFO, "server_ctx_get() failed");
-                goto fail;
-        }
-
-        serv_ctx->lk_version = args.lk_ver;
+        client->server_ctx.lk_version = args.lk_ver;
         gf_client_put (client, NULL);
 
         rsp.lk_ver   = args.lk_ver;

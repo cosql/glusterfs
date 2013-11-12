@@ -66,7 +66,7 @@ glusterfs_ctx_defaults_init (glusterfs_ctx_t *ctx)
 	call_pool_t   *pool = NULL;
 	int	       ret = -1;
 
-	xlator_mem_acct_init (THIS, glfs_mt_end + 1);
+	xlator_mem_acct_init (THIS, glfs_mt_end);
 
 	ctx->process_uuid = generate_glusterfs_ctx_id ();
 	if (!ctx->process_uuid) {
@@ -617,11 +617,11 @@ glfs_init (struct glfs *fs)
 int
 glfs_fini (struct glfs *fs)
 {
-        int             ret = -1;
-        int             countdown = 100;
-        xlator_t        *subvol = NULL;
+        int  ret = -1;
+        xlator_t *subvol = NULL;
         glusterfs_ctx_t *ctx = NULL;
-        call_pool_t     *call_pool = NULL;
+        call_pool_t *call_pool = NULL;
+        int countdown = 100;
 
         ctx = fs->ctx;
 
@@ -641,10 +641,6 @@ glfs_fini (struct glfs *fs)
                 usleep (100000);
         }
         /* leaked frames may exist, we ignore */
-
-        /*We deem glfs_fini as successful if there are no pending frames in the call
-         *pool*/
-        ret = (call_pool->cnt == 0)? 0: -1;
 
         subvol = glfs_active_subvol (fs);
         if (subvol) {

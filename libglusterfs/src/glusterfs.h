@@ -157,11 +157,6 @@
 
 #define UUID_CANONICAL_FORM_LEN  36
 
-/* Adding this here instead of any glusterd*.h files as it is also required by
- * cli
- */
-#define DEFAULT_GLUSTERD_SOCKFILE             DATADIR "/run/glusterd.socket"
-
 /* NOTE: add members ONLY at the end (just before _MAXVALUE) */
 typedef enum {
         GF_FOP_NULL = 0,
@@ -392,7 +387,7 @@ struct _glusterfs_ctx {
         char                fin;
         void               *timer;
         void               *ib;
-        struct call_pool   *pool;
+        void               *pool;
         void               *event_pool;
         void               *iobuf_pool;
         pthread_mutex_t     lock;
@@ -430,8 +425,7 @@ struct _glusterfs_ctx {
 
         int                 daemon_pipe[2];
 
-        struct client_disconnect *client_disconnect;
-        struct clienttable *clienttable;
+        struct _clienttable *clienttable;
 };
 typedef struct _glusterfs_ctx glusterfs_ctx_t;
 

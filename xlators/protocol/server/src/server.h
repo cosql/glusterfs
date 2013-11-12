@@ -13,7 +13,6 @@
 
 #include <pthread.h>
 
-#include "fd.h"
 #include "rpcsvc.h"
 
 #include "fd.h"
@@ -21,7 +20,6 @@
 #include "server-mem-types.h"
 #include "glusterfs3.h"
 #include "timer.h"
-#include "client_t.h"
 
 #define DEFAULT_BLOCK_SIZE         4194304   /* 4MB */
 #define DEFAULT_VOLUME_FILE_PATH   CONFDIR "/glusterfs.vol"
@@ -94,10 +92,11 @@ int
 resolve_and_resume (call_frame_t *frame, server_resume_fn_t fn);
 
 struct _server_state {
-        rpc_transport_t  *xprt;
-        inode_table_t    *itable;
+        struct _client_t     *client;
+        rpc_transport_t      *xprt;
+        inode_table_t        *itable;
 
-        server_resume_fn_t resume_fn;
+        server_resume_fn_t    resume_fn;
 
         loc_t             loc;
         loc_t             loc2;
@@ -133,7 +132,7 @@ struct _server_state {
         int               mask;
         char              is_revalidate;
         dict_t           *dict;
-        struct gf_flock   flock;
+        struct gf_flock      flock;
         const char       *volume;
         dir_entry_t      *entry;
 
@@ -141,19 +140,9 @@ struct _server_state {
         mode_t            umask;
 };
 
-
 extern struct rpcsvc_program gluster_handshake_prog;
 extern struct rpcsvc_program glusterfs3_3_fop_prog;
 extern struct rpcsvc_program gluster_ping_prog;
-
-
-typedef struct _server_ctx {
-        gf_lock_t            fdtable_lock;
-        fdtable_t           *fdtable;
-        struct _gf_timer    *grace_timer;
-        uint32_t             lk_version;
-} server_ctx_t;
-
 
 int
 server_submit_reply (call_frame_t *frame, rpcsvc_request_t *req, void *arg,

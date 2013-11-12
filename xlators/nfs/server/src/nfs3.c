@@ -2,10 +2,19 @@
   Copyright (c) 2010-2011 Gluster, Inc. <http://www.gluster.com>
   This file is part of GlusterFS.
 
-  This file is licensed to you under your choice of the GNU Lesser
-  General Public License, version 3 or any later version (LGPLv3 or
-  later), or the GNU General Public License, version 2 (GPLv2), in all
-  cases as published by the Free Software Foundation.
+  GlusterFS is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published
+  by the Free Software Foundation; either version 3 of the License,
+  or (at your option) any later version.
+
+  GlusterFS is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see
+  <http://www.gnu.org/licenses/>.
 */
 
 #ifndef _CONFIG_H
@@ -5137,33 +5146,6 @@ rpcsvc_program_t        nfs3prog = {
                         .min_auth       = AUTH_NULL,
 };
 
-/*
- * This function rounds up the input value to multiple of 4096. If the
- * value is same as default, then its a NO-OP. Default is already a
- * multiple of 4096. Min and Max supported I/O size limits are
- * 4KB (GF_NFS3_FILE_IO_SIZE_MIN) and 1MB (GF_NFS3_FILE_IO_SIZE_MAX).
- */
-static void
-nfs3_iosize_roundup_4KB (size_t *iosz, size_t iodef)
-{
-        size_t iosize = *iosz;
-        size_t iopages;
-
-        if (iosize == iodef)
-                return;
-
-        iopages = (iosize + GF_NFS3_IO_SIZE -1) >> GF_NFS3_IO_SHIFT;
-        iosize = iopages * GF_NFS3_IO_SIZE;
-
-        /* Double check - boundary conditions */
-        if (iosize < GF_NFS3_FILE_IO_SIZE_MIN) {
-                iosize = GF_NFS3_FILE_IO_SIZE_MIN;
-        } else if (iosize > GF_NFS3_FILE_IO_SIZE_MAX) {
-                iosize = GF_NFS3_FILE_IO_SIZE_MAX;
-        }
-
-        *iosz = iosize;
-}
 
 int
 nfs3_init_options (struct nfs3_state *nfs3, xlator_t *nfsx)
@@ -5195,7 +5177,6 @@ nfs3_init_options (struct nfs3_state *nfs3, xlator_t *nfsx)
                         goto err;
                 }
         }
-        nfs3_iosize_roundup_4KB (&nfs3->readsize, GF_NFS3_RTPREF);
 
         /* nfs3.write-size */
         nfs3->writesize = GF_NFS3_WTPREF;
@@ -5217,7 +5198,6 @@ nfs3_init_options (struct nfs3_state *nfs3, xlator_t *nfsx)
                         goto err;
                 }
         }
-        nfs3_iosize_roundup_4KB (&nfs3->writesize, GF_NFS3_WTPREF);
 
         /* nfs3.readdir.size */
         nfs3->readdirsize = GF_NFS3_DTPREF;
@@ -5239,7 +5219,6 @@ nfs3_init_options (struct nfs3_state *nfs3, xlator_t *nfsx)
                         goto err;
                 }
         }
-        nfs3_iosize_roundup_4KB (&nfs3->readdirsize, GF_NFS3_DTPREF);
 
 
         /* We want to use the size of the biggest param for the io buffer size.

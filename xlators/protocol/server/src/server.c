@@ -25,6 +25,8 @@
 #include "statedump.h"
 #include "defaults.h"
 #include "authenticate.h"
+#include "rpcsvc.h"
+#include "client_t.h"
 
 void
 grace_time_handler (void *data)
@@ -32,7 +34,6 @@ grace_time_handler (void *data)
         client_t      *client    = NULL;
         xlator_t      *this      = NULL;
         gf_timer_t    *timer     = NULL;
-        server_ctx_t  *serv_ctx  = NULL;
         gf_boolean_t   cancelled = _gf_false;
         gf_boolean_t   detached  = _gf_false;
 
@@ -42,23 +43,16 @@ grace_time_handler (void *data)
         GF_VALIDATE_OR_GOTO (THIS->name, this, out);
 
         gf_log (this->name, GF_LOG_INFO, "grace timer expired for %s",
-                client->client_uid);
+                client->server_ctx.client_uid);
 
-        serv_ctx = server_ctx_get (client, this);
-
-        if (serv_ctx == NULL) {
-                gf_log (this->name, GF_LOG_INFO, "server_ctx_get() failed");
-                goto out;
-        }
-
-        LOCK (&serv_ctx->fdtable_lock);
+        LOCK (&client->server_ctx.fdtable_lock);
         {
-                if (serv_ctx->grace_timer) {
-                        timer = serv_ctx->grace_timer;
-                        serv_ctx->grace_timer = NULL;
+                if (client->server_ctx.grace_timer) {
+                        timer = client->server_ctx.grace_timer;
+                        client->server_ctx.grace_timer = NULL;
                 }
         }
-        UNLOCK (&serv_ctx->fdtable_lock);
+        UNLOCK (&client->server_ctx.fdtable_lock);
         if (timer) {
                 gf_timer_call_cancel (this->ctx, timer);
                 cancelled = _gf_true;
@@ -73,7 +67,7 @@ grace_time_handler (void *data)
                 gf_client_put (client, &detached);
                 if (detached)//reconnection did not happen :-(
                         server_connection_cleanup (this, client,
-                                                   INTERNAL_LOCKS | POSIX_LOCKS);
+                                                  INTERNAL_LOCKS | POSIX_LOCKS);
                 gf_client_unref (client);
         }
 out:
@@ -150,7 +144,7 @@ server_submit_reply (call_frame_t *frame, rpcsvc_request_t *req, void *arg,
         if (frame) {
                 state = CALL_STATE (frame);
                 frame->local = NULL;
-                client = frame->root->client;
+                client = state->client;
         }
 
         if (client)
@@ -469,7 +463,6 @@ server_rpc_notify (rpcsvc_t *rpc, void *xl, rpcsvc_event_t event,
         rpc_transport_t     *trans      = NULL;
         server_conf_t       *conf       = NULL;
         client_t            *client     = NULL;
-        server_ctx_t        *serv_ctx   = NULL;
 
         if (!xl || !data) {
                 gf_log_callingfn ("server", GF_LOG_WARNING,
@@ -478,7 +471,7 @@ server_rpc_notify (rpcsvc_t *rpc, void *xl, rpcsvc_event_t event,
         }
 
         this = xl;
-        trans = data;
+        trans= data;
         conf = this->private;
 
         switch (event) {
@@ -518,7 +511,7 @@ server_rpc_notify (rpcsvc_t *rpc, void *xl, rpcsvc_event_t event,
                         break;
 
                 gf_log (this->name, GF_LOG_INFO, "disconnecting connection"
-                        "from %s", client->client_uid);
+                        "from %s", client->server_ctx.client_uid);
 
                 /* If lock self heal is off, then destroy the
                    conn object, else register a grace timer event */
@@ -534,30 +527,22 @@ server_rpc_notify (rpcsvc_t *rpc, void *xl, rpcsvc_event_t event,
                 trans->xl_private = NULL;
                 server_connection_cleanup (this, client, INTERNAL_LOCKS);
 
-                serv_ctx = server_ctx_get (client, this);
-
-                if (serv_ctx == NULL) {
-                        gf_log (this->name, GF_LOG_INFO,
-                                "server_ctx_get() failed");
-                        goto out;
-                }
-
-                LOCK (&serv_ctx->fdtable_lock);
+                LOCK (&client->server_ctx.fdtable_lock);
                 {
-                        if (!serv_ctx->grace_timer) {
+                        if (!client->server_ctx.grace_timer) {
 
                                 gf_log (this->name, GF_LOG_INFO,
                                         "starting a grace timer for %s",
-                                        client->client_uid);
+                                        client->server_ctx.client_uid);
 
-                                serv_ctx->grace_timer =
+                                client->server_ctx.grace_timer =
                                         gf_timer_call_after (this->ctx,
                                                              conf->grace_ts,
                                                              grace_time_handler,
                                                              client);
                         }
                 }
-                UNLOCK (&serv_ctx->fdtable_lock);
+                UNLOCK (&client->server_ctx.fdtable_lock);
                 break;
         case RPCSVC_EVENT_TRANSPORT_DESTROY:
                 /*- conn obj has been disassociated from trans on first
@@ -766,26 +751,6 @@ reconfigure (xlator_t *this, dict_t *options)
 out:
         gf_log ("", GF_LOG_DEBUG, "returning %d", ret);
         return ret;
-}
-
-static int32_t
-client_destroy_cbk (xlator_t *this, client_t *client)
-{
-        void         *tmp = NULL;
-        server_ctx_t *ctx = NULL;
-
-        client_ctx_del (client, this, &tmp);
- 
-        ctx = tmp;
-
-        if (ctx == NULL)
-                return 0;
-
-        gf_fd_fdtable_destroy (ctx->fdtable);
-        LOCK_DESTROY (&ctx->fdtable_lock);
-        GF_FREE (ctx);
-
-        return 0;
 }
 
 int
@@ -1000,9 +965,7 @@ notify (xlator_t *this, int32_t event, void *data, ...)
 
 struct xlator_fops fops;
 
-struct xlator_cbks cbks = {
-        .client_destroy = client_destroy_cbk,
-};
+struct xlator_cbks cbks;
 
 struct xlator_dumpops dumpops = {
         .priv           = server_priv,
